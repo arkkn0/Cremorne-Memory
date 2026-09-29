@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import handler from './decision'
+import handler from '../api/decision'
 
 describe('decision API', () => {
   it('returns Route B for the generic first pass', async () => {
