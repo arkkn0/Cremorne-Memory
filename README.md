@@ -4,6 +4,9 @@
 
 Cremorne Memory predicts capacity mismatches, matches workers with genuinely usable capacity, and turns every measured intervention into reusable local operating knowledge.
 
+**Live prototype:** [temporary-fleet-apogee-phdglzp.vercel.app](https://temporary-fleet-apogee-phdglzp.vercel.app)  
+**Demo QR:** [`public/qr/cremorne-memory-demo.png`](public/qr/cremorne-memory-demo.png)
+
 The working prototype follows one end-to-end story:
 
 1. A high-UV, high-crowding Church Street scenario is observed.
