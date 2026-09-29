@@ -2672,7 +2672,8 @@
         "14:00–15:00",
         "16:00–17:30"
       ],
-      "availabilityStatus": "demonstration"
+      "availabilityStatus": "demonstration",
+      "accessClass": "shared"
     },
     {
       "id": "workshop",
@@ -2688,7 +2689,8 @@
       "availability": [
         "13:30–15:30"
       ],
-      "availabilityStatus": "demonstration"
+      "availabilityStatus": "demonstration",
+      "accessClass": "internal"
     },
     {
       "id": "event",
@@ -2702,7 +2704,8 @@
       ],
       "accessible": true,
       "availability": [],
-      "availabilityStatus": "demonstration"
+      "availabilityStatus": "demonstration",
+      "accessClass": "shared"
     }
   ],
   "sources": [

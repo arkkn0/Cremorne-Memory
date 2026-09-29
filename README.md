@@ -2,19 +2,45 @@
 
 **A context-aware capacity and learning layer for Cremorne.**
 
-Cremorne Memory combines a public-facing product story with a working decision prototype. Workers can compare route capacity under a functional need; CDH can run a controlled intervention, measure aggregate and cohort outcomes, store the boundary of success, and replay the same context with that evidence active.
+Cremorne Memory turns fragmented precinct signals into guided actions. A worker describes an outcome in one brief; the product combines that need with weather, demand, time, capacity, access rules and local Memory to produce an eligible route × departure-time or room × time action. CDH can test an intervention, measure aggregate and cohort outcomes, store the boundary of success, and use that evidence in the next decision.
 
 ## Product surfaces
 
 - `/` — concise product landing page that explains one outcome and one four-step flow
 - `/app` — one product with a judge-first entry flow and two working surfaces:
   - **Live demo:** a 30-second, four-step proof that a measured exception changes the next eligible set
-  - **Worker:** set a functional requirement, choose an eligible route, start the trip, arrive and record lightweight feedback; or find and hold an eligible workspace
+  - **Worker:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, complete it and record lightweight feedback
   - **CDH operator:** detect a hotspot, test one intervention under controlled conditions, compare aggregate and cohort outcomes, then save an exception-aware operating rule
 - `/api/decision` — deterministic serverless decision endpoint used by the demonstrator
 - `/api/health` — deployment health endpoint
 
 No account or login is required. The guided proof writes to the same Memory used by the Worker app and CDH lab; it is not a separate animation.
+
+## Dynamic guidance model
+
+```text
+worker brief + fragmented precinct signals
+                    ↓
+        structured need at time of use
+                    ↓
+     eligible capacity + remaining capacity
+                    ↓
+      a small set of executable actions
+                    ↓
+      measured outcome + local Memory
+                    └──── improves the next eligible set
+```
+
+The worker does not choose an implementation category such as **Internal** or **Shared**. Access class is evaluated behind the interface:
+
+- private capacity stays within its tenant;
+- only owner-declared shared capacity can be discovered across the precinct;
+- the interface shows the source of an eligible room when it helps the worker act.
+
+The same pattern drives both use cases:
+
+- **Movement:** destination, deadline, functional need and time flexibility → route × departure time.
+- **Workspace:** people, time, facilities and accessibility → eligible room × time window.
 
 ## What is measured
 
@@ -66,7 +92,9 @@ Public / forecast / participating inputs
                     └─────────────────↺
 ```
 
-The prototype uses typed TypeScript modules and browser persistence so the complete loop is visible without external credentials. The serverless endpoint exposes the same deterministic rule logic. A production graph store can replace the persistence adapter without changing the decision model.
+The working prototype uses typed TypeScript modules and browser persistence so the complete loop remains usable without external credentials. The serverless endpoint exposes the same deterministic rule logic.
+
+`Capacity Graph` describes the current product data model; it does not claim a live Neo4j deployment. Neo4j is a compatible production persistence path for context, capacity, outcomes and exceptions. GraphRAG or an LLM can later translate unstructured policies and free text into structured constraints or explanations, while deterministic eligibility and measured outcomes remain the source of decisions.
 
 The three-stage illustrated Mia journey for the pre-screening deck is saved at `docs/pitch-assets/mia-user-journey-triptych.png`.
 

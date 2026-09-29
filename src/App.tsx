@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Activity, ArrowLeft, ArrowRight, BrainCircuit, Building2, Check, ChevronDown,
-  CircleGauge, Clock3, ExternalLink, FlaskConical, Home, Map as MapIcon,
-  Navigation, Play, Route, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
+  Activity, ArrowLeft, ArrowRight, BrainCircuit, Building2, Check,
+  CircleGauge, Clock3, FlaskConical, Home, Map as MapIcon,
+  Navigation, Play, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
 } from 'lucide-react'
 import CremorneMap from './CremorneMap'
 import { FIRST_EXCEPTION, simulateScenario } from './engine'
 import { loadMemory, saveRule } from './memory'
 import type { MemoryRule } from './domain'
 import {
-  demandAtTime, evaluateProductRoutes, findSpaces,
-  type DestinationId, type ProductNeed,
+  demandAtTime, evaluateProductRoutes, findSpaces, parseRouteBrief, parseSpaceBrief,
 } from './product'
 
 type ProductRole = 'demo' | 'worker' | 'operator'
@@ -47,7 +46,7 @@ function Landing() {
         <div className="hero__copy">
           <p className="eyebrow"><span className="live-dot" /> CREMORNE MEMORY</p>
           <h1>Use the capacity <em>Cremorne already has.</em></h1>
-          <p className="hero__lead">Match workers to usable routes and rooms—then turn every measured outcome into a smarter next decision.</p>
+          <p className="hero__lead">Turn fragmented signals into guided route × time and room × time actions—then improve the next action with measured outcomes.</p>
           <div className="hero__actions">
             <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try live demo <ArrowRight size={19} /></button>
             <span className="no-login"><Check size={16}/> No login · starts immediately</span>
@@ -63,9 +62,9 @@ function Landing() {
       </section>
 
       <section className="value-triad wrap" aria-label="How Cremorne Memory creates value">
-        <article><span><Activity/></span><div><strong>Live State</strong><p>Crowding · UV · capacity</p></div></article>
-        <article><span><CircleGauge/></span><div><strong>Capacity Graph</strong><p>Routes · rooms · time</p></div></article>
-        <article><span><BrainCircuit/></span><div><strong>Memory</strong><p>Measured outcome → next decision</p></div></article>
+        <article><span><Activity/></span><div><strong>Fragmented signals</strong><p>Weather · demand · owner rules</p></div></article>
+        <article><span><CircleGauge/></span><div><strong>Guided action</strong><p>Capacity Graph · route / room × time</p></div></article>
+        <article><span><BrainCircuit/></span><div><strong>Memory</strong><p>Outcome → next eligible set</p></div></article>
       </section>
 
       <section className="landing-proof">
@@ -221,14 +220,13 @@ function JourneyProgress({ stage }: { stage: JourneyStage }) {
 
 function RouteJourney({ weather, memoryActive }: { weather: { uvIndex: number }; memoryActive: boolean }) {
   const [stage, setStage] = useState<JourneyStage>('setup')
-  const [destination, setDestination] = useState<DestinationId>('east-richmond')
-  const [need, setNeed] = useState<ProductNeed>('lower-uv')
-  const [departure, setDeparture] = useState('16:10')
+  const [brief, setBrief] = useState('Get me to East Richmond by 4:20pm. Avoid direct sun. I can wait up to 10 minutes.')
   const [selectedId, setSelectedId] = useState<string>()
   const [progress, setProgress] = useState(16)
   const [feedback, setFeedback] = useState<'better' | 'same' | 'worse'>()
-  const workers = demandAtTime(destination, departure)
-  const routes = useMemo(() => evaluateProductRoutes({ destination, need, uvIndex: weather.uvIndex, workers, memoryActive }), [destination, need, weather.uvIndex, workers, memoryActive])
+  const parsedBrief = useMemo(() => parseRouteBrief(brief), [brief])
+  const workers = demandAtTime(parsedBrief.destination, parsedBrief.departure)
+  const routes = useMemo(() => evaluateProductRoutes({ destination: parsedBrief.destination, need: parsedBrief.need, strength: parsedBrief.strength, flexibilityMin: parsedBrief.flexibilityMin, uvIndex: weather.uvIndex, workers, memoryActive }), [parsedBrief, weather.uvIndex, workers, memoryActive])
   const selected = routes.find((route) => route.id === selectedId && route.eligible) ?? routes.find((route) => route.eligible) ?? routes[0]
   const noEligible = routes.every((route) => !route.eligible)
 
@@ -246,16 +244,16 @@ function RouteJourney({ weather, memoryActive }: { weather: { uvIndex: number };
       <aside className="journey-panel">
         <JourneyProgress stage={stage} />
         {stage === 'setup' && <div className="journey-step">
-          <span className="step-kicker">STEP 1 OF 3</span><h1>What matters for this trip?</h1><p>Choose one requirement for this journey.</p>
-          <div className="journey-fields"><label><span>From</span><strong>CDH · 80 Balmain St</strong></label><label><span>To</span><select value={destination} onChange={(event) => { setDestination(event.target.value as DestinationId); resetForInput() }}><option value="east-richmond">East Richmond Station</option><option value="richmond">Richmond Station</option></select></label><label><span>Leave at</span><input type="time" value={departure} onChange={(event) => { setDeparture(event.target.value); resetForInput() }} /></label></div>
-          <span className="field-title">Your requirement</span><div className="need-cards"><button className={need === 'lower-uv' ? 'is-active' : ''} onClick={() => { setNeed('lower-uv'); resetForInput() }}><Sun /><strong>Low UV</strong><span>Reduce direct exposure</span></button><button className={need === 'fastest' ? 'is-active' : ''} onClick={() => { setNeed('fastest'); resetForInput() }}><Route /><strong>Fastest</strong><span>Minimise travel time</span></button><button className={need === 'step-free' ? 'is-active' : ''} onClick={() => { setNeed('step-free'); resetForInput() }}><ShieldAlert /><strong>Step-free</strong><span>Verified access only</span></button></div>
-          <button className="primary-action" onClick={findRoutes}>Find eligible routes <ArrowRight size={18} /></button>
+          <span className="step-kicker">STEP 1 OF 3</span><h1>What do you need?</h1><p>Describe the outcome. Cremorne supplies the context.</p>
+          <label className="brief-composer"><span>JOURNEY BRIEF</span><textarea value={brief} onChange={(event) => { setBrief(event.target.value); resetForInput() }} rows={4}/></label>
+          <div className="brief-understood"><span>UNDERSTOOD</span><div>{parsedBrief.chips.map((chip) => <b key={chip}>{chip}</b>)}</div></div>
+          <button className="primary-action" onClick={findRoutes}>Find guided actions <ArrowRight size={18} /></button>
         </div>}
 
         {stage === 'results' && <div className="journey-step">
-          <button className="back-action" onClick={() => setStage('setup')}><ArrowLeft size={15} /> Change trip</button><span className="step-kicker">STEP 2 OF 3</span><h1>{noEligible ? 'No step-free match yet.' : 'Choose your route.'}</h1><p>{noEligible ? 'Crossing and kerb data is incomplete.' : `${routes.filter((route) => route.eligible).length} eligible options`}</p>
-          {noEligible ? <div className="honest-gap"><ShieldAlert /><div><strong>Evidence needed</strong><span>Kerbs · crossings · gradients</span></div></div> : <div className="choice-list">{routes.map((route) => <button key={route.id} disabled={!route.eligible} onClick={() => setSelectedId(route.id)} className={`${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`}><i /><div><span>{route.recommended ? 'BEST FIT' : route.eligible ? 'ALTERNATIVE' : 'NOT ELIGIBLE'}</span><strong>{route.name}</strong><small>{route.durationMin} min · UV load {route.exposureIndex} · {Math.max(0, route.remainingCapacity)} places open</small></div>{selected.id === route.id && <Check size={17} />}</button>)}</div>}
-          {!noEligible && <><details className="inline-evidence"><summary>Why this route? <ChevronDown size={15} /></summary><ul>{selected.reasons.map((reason) => <li key={reason}><Check size={13} />{reason}</li>)}</ul></details><button className="primary-action" onClick={() => setStage('active')}>Start {selected.name} <Navigation size={18} /></button></>}
+          <button className="back-action" onClick={() => setStage('setup')}><ArrowLeft size={15} /> Change brief</button><span className="step-kicker">STEP 2 OF 3</span><h1>{noEligible ? 'No eligible action yet.' : 'Choose an action.'}</h1><p>{noEligible ? 'A required constraint cannot yet be verified.' : `${routes.filter((route) => route.eligible).length} actions fit the brief`}</p>
+          {noEligible ? <div className="honest-gap"><ShieldAlert /><div><strong>Required evidence unavailable</strong><span>{routes[0]?.reasons[0]}</span></div></div> : <div className="choice-list">{routes.map((route) => { const openPlaces = Math.max(0, route.remainingCapacity); return <button key={route.id} disabled={!route.eligible} onClick={() => setSelectedId(route.id)} className={`${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`}><i /><div><span>{route.recommended ? 'BEST FIT' : route.eligible ? 'ALTERNATIVE' : 'NOT ELIGIBLE'}</span><strong>{route.name}</strong><small>{route.eligible ? `${route.suggestedDelayMin ? `Leave in ${route.suggestedDelayMin} min` : 'Leave now'} · ${route.durationMin} min walk · ${openPlaces} ${openPlaces === 1 ? 'place' : 'places'} open` : route.reasons[0]}</small>{selected.id === route.id && route.eligible && <ul className="route-reasons">{route.reasons.slice(0, 3).map((reason) => <li key={reason}><Check size={12}/>{reason}</li>)}</ul>}</div>{selected.id === route.id && <Check size={17} />}</button> })}</div>}
+          {!noEligible && <button className="primary-action" onClick={() => setStage('active')}>Start {selected.name} <Navigation size={18} /></button>}
         </div>}
 
         {stage === 'active' && <div className="journey-step active-journey">
@@ -281,19 +279,22 @@ function RouteJourney({ weather, memoryActive }: { weather: { uvIndex: number };
 }
 
 function SpaceJourney() {
-  const [people, setPeople] = useState(6)
-  const [hybrid, setHybrid] = useState(true)
-  const [accessible, setAccessible] = useState(true)
+  const initialBrief = 'Find a 6-person hybrid room at 2pm.'
+  const [brief, setBrief] = useState(initialBrief)
+  const [appliedBrief, setAppliedBrief] = useState(initialBrief)
   const [selectedId, setSelectedId] = useState('boardroom')
   const [held, setHeld] = useState(false)
-  const results = useMemo(() => findSpaces({ people, requireHybrid: hybrid, requireAccessible: accessible }), [people, hybrid, accessible])
+  const parsedDraft = useMemo(() => parseSpaceBrief(brief), [brief])
+  const parsedBrief = useMemo(() => parseSpaceBrief(appliedBrief), [appliedBrief])
+  const results = useMemo(() => findSpaces({ people: parsedBrief.people, requireHybrid: parsedBrief.requireHybrid, requireAccessible: parsedBrief.requireAccessible }), [parsedBrief])
   const selected = results.find((space) => space.id === selectedId) ?? results[0]
   const chooseSpace = (id: string) => { setSelectedId(id); setHeld(false) }
+  const searchSpaces = () => { setAppliedBrief(brief); setHeld(false); setSelectedId('boardroom') }
   return (
     <section className="space-experience">
-      <aside className="space-search"><span className="step-kicker">WORKSPACE CAPACITY</span><h1>Find a room.</h1><p>Set the size and facilities you need.</p><label><span>People</span><div><input type="range" min="2" max="80" value={people} onChange={(event) => { setPeople(Number(event.target.value)); setHeld(false) }} /><strong>{people}</strong></div></label><div className="space-toggles"><button className={hybrid ? 'is-active' : ''} onClick={() => { setHybrid((value) => !value); setHeld(false) }}><Check /> Hybrid equipped</button><button className={accessible ? 'is-active' : ''} onClick={() => { setAccessible((value) => !value); setHeld(false) }}><Check /> Accessible</button></div><div className="space-match-count"><strong>{results.filter((space) => space.eligible).length}</strong><span>eligible now</span></div><div className="choice-list space-choice-list">{results.map((space) => <button key={space.id} disabled={!space.eligible} onClick={() => chooseSpace(space.id)} className={`${selected.id === space.id ? 'is-selected' : ''} ${!space.eligible ? 'is-blocked' : ''}`}><i/><div><span>{space.eligible ? 'AVAILABLE' : 'FILTERED'}</span><strong>{space.name.replace('CDH ', '')}</strong><small>{space.capacity} people · {space.availability[0] ?? space.blockers[0]}</small></div>{space.eligible ? <Check size={16}/> : <X size={16}/>}</button>)}</div></aside>
+      <aside className="space-search"><span className="step-kicker">WORKSPACE CAPACITY</span><h1>What space do you need?</h1><p>Describe the meeting, time and essentials.</p><label className="brief-composer"><span>SPACE BRIEF</span><textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={3}/></label><div className="brief-understood"><span>UNDERSTOOD</span><div>{parsedDraft.chips.map((chip) => <b key={chip}>{chip}</b>)}</div></div><button className="primary-action space-search-action" onClick={searchSpaces}>Find spaces <ArrowRight size={17}/></button><div className="space-match-count"><strong>{results.filter((space) => space.eligible).length}</strong><span>eligible now</span></div><div className="choice-list space-choice-list">{results.filter((space) => space.eligible).map((space) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={selected.id === space.id ? 'is-selected' : ''}><i/><div><span>{space.accessClass === 'shared' ? 'SHARED SPACE' : 'YOUR BUILDING'} · AVAILABLE</span><strong>{space.name.replace('CDH ', '')}</strong><small>{space.capacity} people · {space.availability[0]}</small></div><Check size={16}/></button>)}</div></aside>
       <div className="space-canvas"><div className="space-floor-label">CDH · LEVEL 1</div>{results.map((space, index) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={`room-shape room-${index + 1} ${selected.id === space.id ? 'is-selected' : ''} ${space.eligible ? 'is-eligible' : 'is-blocked'}`}><Building2 /><strong>{space.name.replace('CDH ', '')}</strong><span>{space.capacity}</span></button>)}<div className="floor-corridor">SHARED CORRIDOR</div></div>
-      <aside className="space-confirm"><span className="step-kicker">{selected.eligible ? 'ELIGIBLE SPACE' : 'NOT A MATCH'}</span><h2>{selected.name}</h2><div className="capacity-number"><strong>{selected.capacity}</strong><span>people</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selected.eligible ? <><div className="booking-time"><Clock3 /><span><small>AVAILABLE</small><strong>{selected.availability[0]}</strong></span></div><button className={`primary-action ${held ? 'is-confirmed' : ''}`} onClick={() => setHeld(true)}>{held ? <><Check /> Slot held</> : <>Hold this slot <ArrowRight size={18} /></>}</button></> : <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by your requirements</strong><span>{selected.blockers.join(' · ')}</span></div></div>}</aside>
+      <aside className="space-confirm"><span className="step-kicker">{selected.eligible ? `ELIGIBLE ${selected.accessClass.toUpperCase()} SPACE` : 'NOT A MATCH'}</span><h2>{selected.name}</h2><div className="capacity-number"><strong>{selected.capacity}</strong><span>people</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selected.eligible ? <><div className="booking-time"><Clock3 /><span><small>AVAILABLE</small><strong>{selected.availability[0]}</strong></span></div><button className={`primary-action ${held ? 'is-confirmed' : ''}`} onClick={() => setHeld(true)}>{held ? <><Check /> Slot held</> : <>Hold this slot <ArrowRight size={18} /></>}</button></> : <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by the brief</strong><span>{selected.blockers.join(' · ')}</span></div></div>}</aside>
     </section>
   )
 }
@@ -310,7 +311,6 @@ function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
   onSeeWorker: () => void
 }) {
   const [stage, setStage] = useState<OperatorStage>(memory.length ? 'saved' : 'detect')
-  const [technicalOpen, setTechnicalOpen] = useState(false)
   const [result, setResult] = useState(() => simulateScenario(300, 42))
   const [engineStatus, setEngineStatus] = useState<EngineStatus>('ready')
   const runTest = async () => {
@@ -336,7 +336,7 @@ function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
   const storeRule = () => { setMemory(saveRule(FIRST_EXCEPTION)); setStage('saved') }
   return (
     <main className="operator-clear">
-      <header className="operator-heading"><div><span className="step-kicker">CDH OPERATIONS</span><h1>Test one decision before it reaches the precinct.</h1></div><OperatorProgress stage={stage} /></header>
+      <header className="operator-heading"><div><span className="step-kicker">CDH LAB · BASELINE VS MEMORY-AWARE</span><h1>Validate one action before workers see it.</h1></div><OperatorProgress stage={stage} /></header>
       <section className="operator-workbench">
         <div className={`operator-scene stage-${stage}`}>
           <div className="scene-top"><span><Activity size={15}/> Church Street</span><span><Sun size={15}/> UV {Math.max(8.2, weather.uvIndex).toFixed(1)}</span><span><Users size={15}/> 300 workers</span></div>
@@ -348,10 +348,15 @@ function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
           {stage === 'testing' && <div className="testing-state"><div className="testing-orb"><Activity/></div><span>RUNNING A/B SIMULATION</span><h2>Same demand. Same UV. Same seed.</h2></div>}
           {stage === 'compare' && <><span className="step-kicker">3 · COMPARE</span><h2>The average improved. One group did not.</h2><div className="result-pair"><div><span>CROWDING</span><strong>{percentDelta(result.crowdingDelta)}</strong><small>better</small></div><div><span>WALK TIME</span><strong>{percentDelta(result.walkingDelta)}</strong><small>better</small></div></div><div className="exception-found"><ShieldAlert/><div><span>EXCEPTION FOUND</span><strong>Low-UV exposure {percentDelta(result.uvDeltaLowUv)}</strong><small>High UV + low-UV need</small></div></div><button className="primary-action" onClick={storeRule}>Adapt and save rule <BrainCircuit size={18}/></button></>}
           {stage === 'saved' && <><div className="saved-badge"><BrainCircuit/></div><span className="step-kicker">4 · RULE READY</span><h2>Next high-UV day starts with the exception.</h2><div className="operator-rule"><span>WHEN</span><strong>UV ≥ 7 + low-UV requirement</strong><span>THEN</span><strong>Filter Route B before ranking</strong></div><button className="primary-action" onClick={onSeeWorker}>See the worker result <ArrowRight size={18}/></button><button className="secondary-action" onClick={() => setStage('detect')}>Replay from detection</button></>}
-          <button className="technical-toggle" onClick={() => setTechnicalOpen((open) => !open)}><CircleGauge size={15}/>{technicalOpen ? 'Hide' : 'Show'} decision trace <ChevronDown size={14}/></button>
         </aside>
       </section>
-      {technicalOpen && <section className="technical-drawer"><div><strong>OBSERVE</strong><span>public + forecast inputs</span></div><ArrowRight/><div><strong>PREDICT</strong><span>arrival-state load</span></div><ArrowRight/><div><strong>MATCH</strong><span>capacity + constraints</span></div><ArrowRight/><div><strong>MEASURE</strong><span>average + cohort effects</span></div><ArrowRight/><div><strong>REMEMBER</strong><span>exception + boundary</span></div><a href="/api/decision?need=low-uv&memory=1" target="_blank" rel="noreferrer">API JSON <ExternalLink size={13}/></a><span className={`engine-status is-${engineStatus}`}>{engineStatus === 'api' ? 'API verified' : engineStatus === 'running' ? 'Engine running' : engineStatus === 'local' ? 'Local engine verified' : 'Engine ready'}</span></section>}
+      <section className="technical-drawer" aria-label="How fragmented data becomes a guided action">
+        <div><strong>FRAGMENTED SIGNALS</strong><span>weather · crowding · access rules</span></div><ArrowRight/>
+        <div><strong>UNDERSTOOD NEED</strong><span>destination · constraint · time</span></div><ArrowRight/>
+        <div><strong>GUIDED ACTION</strong><span>eligible capacity · ranked at use-time</span></div><ArrowRight/>
+        <div><strong>MEASURE + REMEMBER</strong><span>outcome · exception · next eligible set</span></div>
+        <span className={`engine-status is-${engineStatus}`}>{engineStatus === 'api' ? 'Decision API verified' : engineStatus === 'running' ? 'Engine running' : engineStatus === 'local' ? 'Local engine verified' : 'Decision engine ready'}</span>
+      </section>
     </main>
   )
 }
