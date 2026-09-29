@@ -5,5 +5,8 @@ dist
 *.local
 coverage
 .artifacts
+.deck-review/
+.codex-finalizer-deck/
+submission/
 
 .vercel

@@ -2,6 +2,8 @@
 
 **A context-aware capacity and learning layer for Cremorne.**
 
+**Live product:** https://team-bubble.vercel.app/
+
 Cremorne Memory turns fragmented precinct signals into guided actions. A worker describes an outcome in one brief; the product combines that need with weather, demand, time, capacity, access rules and local Memory to produce an eligible route × departure-time or room × time action. CDH can test an intervention, measure aggregate and cohort outcomes, store the boundary of success, and use that evidence in the next decision.
 
 ## Product surfaces
@@ -9,7 +11,7 @@ Cremorne Memory turns fragmented precinct signals into guided actions. A worker 
 - `/` — concise product landing page that explains one outcome and one four-step flow
 - `/app` — one product with a judge-first entry flow and two working surfaces:
   - **Live demo:** a 30-second, four-step proof that a measured exception changes the next eligible set
-  - **Worker Guide:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, record actual completion and feedback, and use that outcome in the next ranking
+  - **Worker Guide:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, then record actual completion and lightweight outcome feedback as evidence
   - **CDH Experiment:** define an intervention brief, run a controlled baseline comparison, measure precinct and subgroup effects, then publish an exception-aware operating rule
 - `/api/decision` — deterministic serverless decision endpoint used by the demonstrator
 - `/api/health` — deployment health endpoint
