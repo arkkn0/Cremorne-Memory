@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import type { EvaluatedProductRoute } from './product'
 import { productContext } from './product'
@@ -25,6 +25,22 @@ export default function CremorneMap({
   onSelect: (id: string) => void
   showTrees: boolean
 }) {
+  const [flowTick, setFlowTick] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setFlowTick((value) => (value + 1) % 120), 180)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const activeRoute = routes.find((route) => route.id === selectedId) ?? routes.find((route) => route.recommended)
+  const movingWorkers = useMemo(() => {
+    if (!activeRoute?.coordinates.length) return []
+    return Array.from({ length: 9 }, (_, index) => {
+      const progress = ((flowTick / 120) + index / 9) % 1
+      const coordinateIndex = Math.min(activeRoute.coordinates.length - 1, Math.floor(progress * activeRoute.coordinates.length))
+      return activeRoute.coordinates[coordinateIndex]
+    })
+  }, [activeRoute, flowTick])
+
   return (
     <MapContainer center={[-37.8282, 144.994]} zoom={16} zoomControl={false} attributionControl className="cremorne-map">
       <TileLayer
@@ -57,6 +73,7 @@ export default function CremorneMap({
               opacity: route.eligible ? (selected ? 1 : 0.58) : 0.42,
               weight: selected ? 8 : 5,
               dashArray: route.eligible ? undefined : '8 8',
+              className: selected ? 'route-flow-line' : undefined,
             }}
           >
             <Tooltip sticky>{route.name} · {route.durationMin} min</Tooltip>
@@ -64,11 +81,22 @@ export default function CremorneMap({
         )
       })}
 
+      {movingWorkers.map((position, index) => (
+        <CircleMarker
+          key={`${activeRoute?.id}-${index}`}
+          center={position}
+          radius={index % 3 === 0 ? 4 : 3}
+          pathOptions={{ color: '#202521', fillColor: '#ffd85a', fillOpacity: 1, weight: 1.5 }}
+        />
+      ))}
+
       <CircleMarker center={productContext.places.cdh.position} radius={8} pathOptions={{ color: '#232824', fillColor: '#ffd85a', fillOpacity: 1, weight: 3 }}>
+        <Tooltip permanent direction="right" offset={[10, 0]} className="place-label">CDH</Tooltip>
         <Popup><strong>Cremorne Digital Hub</strong><br />80 Balmain Street</Popup>
       </CircleMarker>
       {Object.entries(productContext.places).filter(([id]) => id !== 'cdh').map(([id, place]) => (
         <CircleMarker key={id} center={place.position} radius={7} pathOptions={{ color: '#232824', fillColor: '#f7f1e7', fillOpacity: 1, weight: 3 }}>
+          <Tooltip permanent direction="left" offset={[-9, 0]} className="place-label">{place.name}</Tooltip>
           <Popup><strong>{place.name}</strong><br />{place.pmPeakEntries?.toLocaleString()} PM-peak station entries</Popup>
         </CircleMarker>
       ))}

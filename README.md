@@ -6,7 +6,7 @@ Cremorne Memory combines a public-facing product story with a working decision p
 
 ## Product surfaces
 
-- `/` — concise product landing page and illustrated learning story
+- `/` — concise product landing page with a unified Cremorne hero and interactive Memory mechanism
 - `/app` — working product with four connected views:
   - **Worker map:** real pedestrian geometry, Victorian tree data, station-demand baseline, weather forecast and modelled arrival capacity
   - **Precinct lab:** baseline versus Memory-aware controlled simulation
@@ -68,6 +68,8 @@ Public / forecast / participating inputs
 ```
 
 The prototype uses typed TypeScript modules and browser persistence so the complete loop is visible without external credentials. The serverless endpoint exposes the same deterministic rule logic. A production graph store can replace the persistence adapter without changing the decision model.
+
+The three-stage illustrated Mia journey for the pre-screening deck is saved at `docs/pitch-assets/mia-user-journey-triptych.png`.
 
 ## Run
 

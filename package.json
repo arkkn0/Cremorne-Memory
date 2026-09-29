@@ -35,6 +35,7 @@
     "eslint-plugin-react-refresh": "latest",
     "globals": "latest",
     "qrcode": "^1.5.4",
+    "typescript-eslint": "^8.71.0",
     "vitest": "latest"
   }
 }
