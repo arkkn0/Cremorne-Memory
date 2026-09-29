@@ -238,14 +238,18 @@ export function evaluateProductRoutes({
     if (need === 'lower-uv' && index === 2) reasons.push('Covered geometry reduces direct sun and glare')
     if (suggestedDelayMin) reasons.push(`Predicted load falls after an ${suggestedDelayMin}-minute shift`)
     if (personalOutcome) reasons.push(`Personal Memory: this route previously felt ${personalOutcome.feedback}`)
+    if (personalOutcome && personalOutcome.elapsedSeconds >= 60) reasons.push(`Personal Memory: ${Math.round(personalOutcome.elapsedSeconds / 6) / 10} minutes observed last time`)
 
     const timeWeight = need === 'fastest' ? 12 : 5
     const exposureWeight = need === 'lower-uv' ? 1.1 : 0.18
     const crowdingWeight = need === 'lower-crowding' ? 1.4 : 0.15
     const preferenceMultiplier = strength === 'preferred' ? 0.72 : 1
     const capacityPenalty = remainingCapacity < 12 ? 60 : 0
-    const personalAdjustment = personalOutcome?.feedback === 'better' ? -12 : personalOutcome?.feedback === 'worse' ? 35 : 0
-    const score = route.durationMin * timeWeight + exposureIndex * exposureWeight * preferenceMultiplier + predictedLoad * crowdingWeight * preferenceMultiplier + capacityPenalty + personalAdjustment
+    const feedbackAdjustment = personalOutcome?.feedback === 'better' ? -12 : personalOutcome?.feedback === 'worse' ? 35 : 0
+    const observedTimeAdjustment = personalOutcome && personalOutcome.elapsedSeconds >= 60
+      ? Math.max(-20, Math.min(40, (personalOutcome.elapsedSeconds / 60 - personalOutcome.predictedMinutes) * 3))
+      : 0
+    const score = route.durationMin * timeWeight + exposureIndex * exposureWeight * preferenceMultiplier + predictedLoad * crowdingWeight * preferenceMultiplier + capacityPenalty + feedbackAdjustment + observedTimeAdjustment
 
     return {
       ...route,

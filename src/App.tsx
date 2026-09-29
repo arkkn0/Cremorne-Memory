@@ -53,7 +53,7 @@ function Landing() {
             <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try live proof <ArrowRight size={19} /></button>
             <span className="no-login"><Check size={16}/> No login · starts immediately</span>
           </div>
-          <div className="persona-hero"><div>M</div><span><q>I need the route that works for me at 4:20—not the route that works on average.</q><small>Mia · Cremorne worker with albinism, photosensitivity and low vision</small></span></div>
+          <div className="persona-hero"><div>M</div><span><q>I need to reach East Richmond by 4:20 without direct sun or glare. Show me what will work today.</q><small>Mia · Cremorne worker with albinism, photosensitivity and low vision</small></span></div>
         </div>
 
         <div className="hero__visual" aria-label="Cremorne with overloaded and spare capacity">

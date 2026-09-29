@@ -42,7 +42,7 @@ The same pattern drives both use cases:
 - **Movement:** destination, deadline, functional need and time flexibility → route × departure time.
 - **Workspace:** people, time, equipment, sun/glare controls and accessibility → eligible room × time window → hold → confirmed booking.
 
-Mia's journey is the hero application: a Cremorne worker with albinism, photosensitivity and low vision. Her route matching includes direct UV, glare, covered passages, arrival time and high-contrast guidance. Her workspace matching includes adjustable blinds, low-glare lighting and meeting equipment. The engine stores functional requirements rather than a medical diagnosis.
+Mia's journey is the hero application: a Cremorne worker with albinism, photosensitivity and low vision. Her route matching includes direct UV, glare, covered passages, arrival time and high-contrast guidance. Her workspace matching includes adjustable blinds, low-glare lighting and meeting equipment. The engine stores functional requirements rather than a medical diagnosis. Sub-minute hackathon interactions are recorded but excluded from the travel-time score; real observed duration contributes once the journey exceeds one minute.
 
 ## Two Memory loops
 
