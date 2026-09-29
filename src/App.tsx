@@ -33,10 +33,10 @@ function Brand({ compact = false }: { compact?: boolean }) {
 function Landing() {
   const [flowStep, setFlowStep] = useState(0)
   const flow = [
-    { label: 'Tell us', title: 'Low UV · East Richmond', value: 'Need + destination + time', icon: Sun },
-    { label: 'Match', title: '3 routes → 2 eligible', value: 'Capacity + hard requirements', icon: CircleGauge },
+    { label: 'Tell us', title: 'Low UV · arrive by 4:20', value: 'Need + destination + time', icon: Sun },
+    { label: 'Match', title: '3 routes → 2 usable', value: 'Capacity + hard requirements', icon: CircleGauge },
     { label: 'Choose', title: 'Canopy route · 9 min', value: 'Clear trade-offs, your decision', icon: Navigation },
-    { label: 'Learn', title: '“Better” → remembered', value: 'The next similar choice improves', icon: BrainCircuit },
+    { label: 'Learn', title: 'Route B exception saved', value: 'Filtered before the next high-UV journey', icon: BrainCircuit },
   ]
   useEffect(() => {
     const timer = window.setInterval(() => setFlowStep((step) => (step + 1) % flow.length), 2600)
@@ -58,13 +58,13 @@ function Landing() {
         <div className="hero__copy">
           <p className="eyebrow"><span className="live-dot" /> FOR CREMORNE WORKERS + OPERATORS</p>
           <h1>A better next move through <em>Cremorne.</em></h1>
-          <p className="hero__lead">Find a route or workspace that fits what you need now. Each measured outcome helps Cremorne make the next decision better.</p>
+          <p className="hero__lead">Workers get a route or room they can actually use. CDH measures what worked—and remembers where it failed—so the next decision starts smarter.</p>
           <div className="hero__actions">
             <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Plan a journey <ArrowRight size={19} /></button>
             <a className="text-link" href="#how">See the 4-step flow <ChevronDown size={16} /></a>
           </div>
           <div className="hero-promise" aria-label="Example product outcome">
-            <span><Sun size={16} /> Low UV</span><ArrowRight size={15} /><strong>Canopy route · 9 min</strong><ArrowRight size={15} /><span><BrainCircuit size={16} /> Learns outcome</span>
+            <span><Sun size={16} /> Low UV</span><ArrowRight size={15} /><strong>Canopy route · 9 min</strong><ArrowRight size={15} /><span><BrainCircuit size={16} /> Remembers exception</span>
           </div>
         </div>
 
@@ -102,11 +102,6 @@ function Landing() {
             <div className="flow-progress"><i style={{ width: `${(flowStep + 1) * 25}%` }} /></div>
           </div>
         </div>
-      </section>
-
-      <section className="audience-value wrap">
-        <article><div><Navigation /><span>FOR WORKERS</span></div><h3>Get one clear next action.</h3><p>A route or room that satisfies today’s requirement, arrival time and available capacity.</p></article>
-        <article><div><FlaskConical /><span>FOR CDH</span></div><h3>Learn which actions hold up.</h3><p>Test an intervention, compare outcomes and save where it works—and where it fails.</p></article>
       </section>
 
       <section className="landing-cta"><div className="wrap landing-cta__inner"><div><p className="eyebrow">WORKING PROTOTYPE</p><h2>Start with one real task.</h2><p>No login required.</p></div><button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Open Cremorne Memory <ArrowRight size={19} /></button></div></section>

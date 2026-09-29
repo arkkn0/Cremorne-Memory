@@ -386,11 +386,6 @@ img, svg { display: block; max-width: 100%; }
 .flow-player__stage > small { margin-top: 9px; color: #9ea79f; font-size: 13px; }
 .flow-progress { width: min(420px,60vw); height: 5px; overflow: hidden; margin-top: 35px; border-radius: 99px; background: rgba(255,255,255,.1); }
 .flow-progress i { display: block; height: 100%; border-radius: inherit; background: #ffd85a; transition: width .5s ease; }
-.audience-value { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 95px 0; }
-.audience-value article { min-height: 260px; padding: 33px; border: 1px solid var(--line); border-radius: 22px; background: #fffdf8; }
-.audience-value article > div { display: flex; align-items: center; gap: 9px; color: var(--green); font-size: 9px; letter-spacing: .14em; font-weight: 800; }
-.audience-value article h3 { margin: 52px 0 12px; font-family: 'DM Serif Display'; font-size: 33px; font-weight: 400; }
-.audience-value article p { max-width: 480px; margin: 0; color: var(--muted); line-height: 1.55; }
 .landing--clear .landing-cta__inner > div > p:last-child { color: #9ea69f; }
 
 .product-clear { min-height: 100vh; color: #202521; background: #ecefea; }
@@ -632,7 +627,6 @@ img, svg { display: block; max-width: 100%; }
   .flow-player__rail button { grid-template-columns: 1fr; justify-items: center; padding: 8px 3px; }
   .flow-player__rail button i, .flow-player__rail button svg { display: none; }
   .flow-player__stage { min-height: 280px; padding: 40px 25px; }
-  .audience-value { grid-template-columns: 1fr; }
   .product-clear__header { height: 62px; padding: 0 10px; }
   .role-switch button { padding: 0 9px; font-size: 8px; }
   .worker-clear { height: calc(100vh - 62px); padding: 7px; overflow: auto; }
