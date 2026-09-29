@@ -5,7 +5,7 @@ import {
   Navigation, Play, Route, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
 } from 'lucide-react'
 import CremorneMap from './CremorneMap'
-import { FIRST_EXCEPTION } from './engine'
+import { FIRST_EXCEPTION, simulateScenario } from './engine'
 import { loadMemory, saveRule } from './memory'
 import type { MemoryRule } from './domain'
 import {
@@ -17,9 +17,11 @@ type ProductRole = 'worker' | 'operator'
 type WorkerTask = 'route' | 'space'
 type JourneyStage = 'setup' | 'results' | 'active' | 'feedback' | 'saved'
 type OperatorStage = 'detect' | 'testing' | 'compare' | 'saved'
+type EngineStatus = 'ready' | 'running' | 'api' | 'local'
 
 const PATHS = { landing: '/', product: '/app' }
 const go = (path: string) => { window.location.href = path }
+const percentDelta = (value: number) => `${value < 0 ? '−' : '+'}${Math.abs(value)}%`
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -262,7 +264,28 @@ function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
 }) {
   const [stage, setStage] = useState<OperatorStage>(memory.length ? 'saved' : 'detect')
   const [technicalOpen, setTechnicalOpen] = useState(false)
-  const runTest = () => { setStage('testing'); window.setTimeout(() => setStage('compare'), 1300) }
+  const [result, setResult] = useState(() => simulateScenario(300, 42))
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>('ready')
+  const runTest = async () => {
+    setStage('testing')
+    setEngineStatus('running')
+    const minimumRunTime = new Promise((resolve) => window.setTimeout(resolve, 1300))
+
+    try {
+      const response = await fetch('/api/decision?need=standard&uv=8.2&temperature=31&crowding=82&workers=300&seed=42&memory=0')
+      const contentType = response.headers.get('content-type') ?? ''
+      if (!response.ok || !contentType.includes('application/json')) throw new Error('Decision API unavailable')
+      const data = await response.json()
+      setResult(data.experiment)
+      setEngineStatus('api')
+    } catch {
+      setResult(simulateScenario(300, 42))
+      setEngineStatus('local')
+    }
+
+    await minimumRunTime
+    setStage('compare')
+  }
   const storeRule = () => { setMemory(saveRule(FIRST_EXCEPTION)); setStage('saved') }
   return (
     <main className="operator-clear">
@@ -276,12 +299,12 @@ function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
         <aside className="operator-decision">
           {stage === 'detect' && <><span className="step-kicker">1 · DETECTED</span><h2>Church Street reaches 92% load in 15 minutes.</h2><p>Question: can demand be redistributed without making another worker’s journey worse?</p><div className="operator-signal"><strong>92%</strong><span>predicted route load</span></div><button className="primary-action" onClick={runTest}>Test redistribution <Play size={18}/></button></>}
           {stage === 'testing' && <div className="testing-state"><div className="testing-orb"><Activity/></div><span>RUNNING CONTROLLED TEST</span><h2>Same demand. Same UV. Same seed.</h2><p>Only the decision logic changes.</p></div>}
-          {stage === 'compare' && <><span className="step-kicker">3 · COMPARE</span><h2>The average improved. One group did not.</h2><div className="result-pair"><div><span>CROWDING</span><strong>−20%</strong><small>better</small></div><div><span>WALK TIME</span><strong>−7%</strong><small>better</small></div></div><div className="exception-found"><ShieldAlert/><div><span>EXCEPTION FOUND</span><strong>Low-UV exposure +40%</strong><small>Route B cannot be reused universally.</small></div></div><button className="primary-action" onClick={storeRule}>Adapt and save rule <BrainCircuit size={18}/></button></>}
+          {stage === 'compare' && <><span className="step-kicker">3 · COMPARE</span><h2>The average improved. One group did not.</h2><div className="result-pair"><div><span>CROWDING</span><strong>{percentDelta(result.crowdingDelta)}</strong><small>better</small></div><div><span>WALK TIME</span><strong>{percentDelta(result.walkingDelta)}</strong><small>better</small></div></div><div className="exception-found"><ShieldAlert/><div><span>EXCEPTION FOUND</span><strong>Low-UV exposure {percentDelta(result.uvDeltaLowUv)}</strong><small>Route B cannot be reused universally.</small></div></div><button className="primary-action" onClick={storeRule}>Adapt and save rule <BrainCircuit size={18}/></button></>}
           {stage === 'saved' && <><div className="saved-badge"><BrainCircuit/></div><span className="step-kicker">4 · RULE READY</span><h2>Next high-UV day starts with the exception.</h2><div className="operator-rule"><span>WHEN</span><strong>UV ≥ 7 + low-UV requirement</strong><span>THEN</span><strong>Filter Route B before ranking</strong></div><button className="primary-action" onClick={onSeeWorker}>See the worker result <ArrowRight size={18}/></button><button className="secondary-action" onClick={() => setStage('detect')}>Replay from detection</button></>}
           <button className="technical-toggle" onClick={() => setTechnicalOpen((open) => !open)}><CircleGauge size={15}/>{technicalOpen ? 'Hide' : 'Show'} decision trace <ChevronDown size={14}/></button>
         </aside>
       </section>
-      {technicalOpen && <section className="technical-drawer"><div><strong>OBSERVE</strong><span>public + forecast inputs</span></div><ArrowRight/><div><strong>PREDICT</strong><span>arrival-state load</span></div><ArrowRight/><div><strong>MATCH</strong><span>capacity + constraints</span></div><ArrowRight/><div><strong>MEASURE</strong><span>average + cohort effects</span></div><ArrowRight/><div><strong>REMEMBER</strong><span>exception + boundary</span></div><a href="/api/decision?need=low-uv&memory=1" target="_blank" rel="noreferrer">API JSON <ExternalLink size={13}/></a></section>}
+      {technicalOpen && <section className="technical-drawer"><div><strong>OBSERVE</strong><span>public + forecast inputs</span></div><ArrowRight/><div><strong>PREDICT</strong><span>arrival-state load</span></div><ArrowRight/><div><strong>MATCH</strong><span>capacity + constraints</span></div><ArrowRight/><div><strong>MEASURE</strong><span>average + cohort effects</span></div><ArrowRight/><div><strong>REMEMBER</strong><span>exception + boundary</span></div><a href="/api/decision?need=low-uv&memory=1" target="_blank" rel="noreferrer">API JSON <ExternalLink size={13}/></a><span className={`engine-status is-${engineStatus}`}>{engineStatus === 'api' ? 'API verified' : engineStatus === 'running' ? 'Engine running' : engineStatus === 'local' ? 'Local engine verified' : 'Engine ready'}</span></section>}
       <p className="synthetic-footnote">Synthetic MVP experiment. Reported effects demonstrate the measurement workflow and are not field-validated claims.</p>
     </main>
   )

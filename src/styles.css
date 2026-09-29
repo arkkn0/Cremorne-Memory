@@ -593,12 +593,15 @@ img, svg { display: block; max-width: 100%; }
 .operator-rule span { color: #1d7f69; font-size: 7px; letter-spacing: .13em; font-weight: 800; }
 .operator-rule strong { font-size: 11px; }
 .technical-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 13px; border: 0; color: #788079; background: transparent; font-size: 8px; font-weight: 700; }
-.technical-drawer { max-width: 1220px; display: grid; grid-template-columns: repeat(9,auto) 1fr; align-items: center; gap: 10px; margin: 10px auto 0; padding: 11px 14px; border-radius: 13px; color: #dfe4df; background: #202521; }
+.technical-drawer { max-width: 1220px; display: grid; grid-template-columns: repeat(9,auto) 1fr auto; align-items: center; gap: 10px; margin: 10px auto 0; padding: 11px 14px; border-radius: 13px; color: #dfe4df; background: #202521; }
 .technical-drawer div { display: grid; gap: 2px; }
 .technical-drawer strong { color: #ffd85a; font-size: 7px; letter-spacing: .09em; }
 .technical-drawer span { color: #929a93; font-size: 7px; }
 .technical-drawer > svg { width: 13px; color: #626a63; }
 .technical-drawer a { justify-self: end; display: flex; align-items: center; gap: 5px; color: #fff; font-size: 8px; font-weight: 800; }
+.technical-drawer .engine-status { padding: 5px 8px; border: 1px solid #525a53; border-radius: 999px; color: #dfe4df; font-weight: 800; white-space: nowrap; }
+.technical-drawer .engine-status.is-api { border-color: #4aa58d; color: #80d2bb; }
+.technical-drawer .engine-status.is-running { border-color: #d2ac31; color: #ffd85a; }
 .synthetic-footnote { max-width: 1220px; margin: 9px auto 0; color: #7a827b; font-size: 8px; }
 
 @media (max-width: 1000px) {

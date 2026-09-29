@@ -83,10 +83,12 @@ Parameters:
 - `need`: `standard`, `low-uv` or `step-free`
 - `memory`: `1` to retrieve the prototype local rule
 - `uv`, `temperature`, `crowding`, `workers`, `departure`
+- `seed`: deterministic experiment seed
 
 Returns:
 
 - scenario and functional need;
+- controlled experiment output for the requested worker count and seed;
 - recommended route;
 - eligible state for every route;
 - score, predicted exposure and remaining capacity;

@@ -1,5 +1,5 @@
 import type { FunctionalNeed, Scenario } from '../src/domain'
-import { evaluateRoutes, FIRST_EXCEPTION } from '../src/engine'
+import { evaluateRoutes, FIRST_EXCEPTION, simulateScenario } from '../src/engine'
 
 export const config = { runtime: 'edge' }
 
@@ -10,6 +10,7 @@ export default function handler(request: Request) {
   const requestedNeed = url.searchParams.get('need') as FunctionalNeed | null
   const need = requestedNeed && allowedNeeds.includes(requestedNeed) ? requestedNeed : 'standard'
   const memoryEnabled = url.searchParams.get('memory') === '1'
+  const seed = numberParam(url, 'seed', 42, 1, 10_000)
 
   const scenario: Scenario = {
     uvIndex: numberParam(url, 'uv', 8.2, 0, 14),
@@ -27,6 +28,7 @@ export default function handler(request: Request) {
     scenario,
     need,
     memoryEnabled,
+    experiment: simulateScenario(scenario.workers, seed),
     recommendation: routes.find((route) => route.eligible)?.id ?? null,
     routes: routes.map((route) => ({
       id: route.id,
