@@ -773,9 +773,12 @@ img, svg { display: block; max-width: 100%; }
   .hero--product .hero__visual img { min-height: 300px; object-fit: cover; }
   .value-triad { padding-bottom: 46px; }
   .landing-proof__inner { min-height: 300px; align-items: flex-start; justify-content: center; flex-direction: column; }
-  .role-switch button { width: 38px; padding: 0; justify-content: center; font-size: 0; }
+  .role-switch button { width: 44px; min-height: 44px; padding: 0; justify-content: center; font-size: 0; }
+  .product-status > a { min-width: 44px; min-height: 44px; justify-content: center; }
   .task-switcher > div:nth-child(2) { min-width: 0; width: 100%; }
   .task-switcher > div:nth-child(2) button { min-height: 48px; padding-inline: 10px; font-size: 10px; }
+  .back-action { min-height: 40px; margin-bottom: 10px; }
+  .space-toggles button, .secondary-action, .technical-toggle { min-height: 44px; }
   .guided-demo { min-height: calc(100vh - 62px); padding: 12px 8px; }
   .demo-heading { min-height: 130px; margin-bottom: 10px; }
   .demo-heading h1 { font-size: 31px; }
@@ -787,11 +790,14 @@ img, svg { display: block; max-width: 100%; }
   .route-tag-a { left: 6%; }.route-tag-b { left: 41%; top: 22%; }.route-tag-c { left: 33%; }
   .mia-chip { top: 10px; left: 10px; }
   .memory-retrieved { top: 10px; right: 10px; }
-  .demo-story { min-height: 485px; padding: 24px 20px 20px; }
-  .demo-scenario .demo-story { min-height: 310px; }
+  .demo-story { min-height: 440px; padding: 18px 20px; }
+  .demo-scenario .demo-story { min-height: 300px; }
   .demo-footer { align-items: flex-start; flex-direction: column; padding: 12px 4px 20px; }
   .demo-progress-line { width: 100%; justify-content: space-between; gap: 4px; }
   .demo-progress-line span { gap: 3px; font-size: 6px; }
+  .space-search { order: 1; min-height: auto; overflow: visible; }
+  .space-confirm { order: 2; min-height: auto; overflow: visible; }
+  .space-canvas { order: 3; min-height: 420px; }
 }
 
 /* Product motion — every movement communicates state, direction or response. */
