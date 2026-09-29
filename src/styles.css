@@ -793,3 +793,70 @@ img, svg { display: block; max-width: 100%; }
   .demo-progress-line { width: 100%; justify-content: space-between; gap: 4px; }
   .demo-progress-line span { gap: 3px; font-size: 6px; }
 }
+
+/* Product motion — every movement communicates state, direction or response. */
+.landing-home .landing-nav { animation: soft-drop .55s cubic-bezier(.22,.8,.22,1) both; }
+.hero--product .hero__copy > * { animation: soft-rise .58s cubic-bezier(.22,.8,.22,1) both; }
+.hero--product .hero__copy > :nth-child(2) { animation-delay: .07s; }
+.hero--product .hero__copy > :nth-child(3) { animation-delay: .14s; }
+.hero--product .hero__copy > :nth-child(4) { animation-delay: .21s; }
+.hero--product .hero__visual { animation: visual-reveal .75s cubic-bezier(.22,.8,.22,1) .12s both; }
+.hero--product .hero__visual img { transition: transform .65s cubic-bezier(.22,.8,.22,1), box-shadow .65s ease; }
+.hero--product .hero__visual:hover img { transform: translateY(-5px) rotate(.15deg); box-shadow: 0 34px 82px rgba(41,47,41,.19); }
+.hero--product .hero-note { animation: note-pop .42s cubic-bezier(.2,.9,.28,1.25) both; }
+.hero--product .hero-note--crowd { animation-delay: .55s; }
+.hero--product .hero-note--route { animation-delay: .68s; }
+.hero--product .hero-note--room { animation-delay: .81s; }
+.value-triad article { transition: transform .25s cubic-bezier(.22,.8,.22,1), box-shadow .25s ease, border-color .25s ease; }
+.value-triad article:hover { transform: translateY(-5px); border-color: rgba(32,37,33,.2); box-shadow: 0 16px 34px rgba(31,38,32,.08); }
+.value-triad article > span { transition: transform .32s cubic-bezier(.22,.8,.22,1); }
+.value-triad article:hover > span { transform: rotate(-4deg) scale(1.06); }
+
+.button svg, .primary-action svg, .secondary-action svg, .demo-question svg { transition: transform .2s cubic-bezier(.22,.8,.22,1); }
+.button:hover svg, .primary-action:hover svg, .demo-question:hover svg { transform: translateX(3px); }
+.button:active, .primary-action:active, .secondary-action:active, .role-switch button:active, .task-switcher button:active { transform: scale(.985); }
+.role-switch button, .task-switcher > div:nth-child(2) button, .need-cards button, .choice-list > button, .space-toggles button, .room-shape { transition: color .2s ease, background .2s ease, border-color .2s ease, box-shadow .25s ease, transform .2s cubic-bezier(.22,.8,.22,1), opacity .2s ease; }
+.need-cards button:hover, .choice-list > button:not(:disabled):hover, .room-shape:not(.is-blocked):hover { transform: translateY(-2px); }
+.choice-list > button.is-selected, .room-shape.is-selected { animation: selected-settle .36s cubic-bezier(.2,.9,.28,1.2) both; }
+.product-status > span.is-on, .map-context .memory-on { animation: memory-breathe 2.8s ease-in-out infinite; }
+.step-kicker.live i { animation: live-pulse 1.45s ease-out infinite; }
+.journey-progress > div::after, .operator-progress > div::after { transition: background .35s ease; }
+.journey-progress i, .operator-progress i, .demo-progress-line span i { transition: color .25s ease, background .25s ease, transform .25s cubic-bezier(.22,.8,.22,1); }
+.journey-progress .is-on i, .operator-progress .is-on i, .demo-progress-line span.is-on i { transform: scale(1.06); }
+.saved-card .arrival-icon, .saved-badge { animation: saved-confirm .55s cubic-bezier(.2,.9,.28,1.18) both; }
+
+.demo-story__stage { animation: story-in .34s cubic-bezier(.22,.8,.22,1) both; }
+.demo-first-pass .demo-route.route-b, .demo-reveal .demo-route.route-b { stroke-dasharray: 18 10; animation: decision-flow 1.1s linear infinite; }
+.demo-crowd circle { transform-box: fill-box; transform-origin: center; animation: crowd-breathe 1.25s ease-in-out infinite alternate; }
+.demo-crowd circle:nth-child(3n) { animation-delay: -.35s; }
+.demo-crowd circle:nth-child(3n+1) { animation-delay: -.7s; }
+.demo-remembered .demo-crowd circle { animation-duration: 2.1s; opacity: .58; }
+.demo-traveller, .op-traveller { stroke: #fff; stroke-width: 4; filter: drop-shadow(0 3px 5px rgba(32,37,33,.25)); }
+.traveller-b { fill: #ff4b27; }
+.traveller-c { fill: #16826a; }
+.demo-remembered .route-tag-c { animation: eligible-arrive .48s cubic-bezier(.2,.9,.28,1.18) both; }
+.memory-retrieved { animation: memory-in .45s cubic-bezier(.2,.9,.28,1.12) both, memory-breathe 2.8s ease-in-out .5s infinite; }
+.remembered-choice { animation: soft-rise .35s cubic-bezier(.22,.8,.22,1) both; }
+.remembered-choice.eligible { animation-delay: .08s; }
+.remembered-rule { animation: soft-rise .35s cubic-bezier(.22,.8,.22,1) .15s both; }
+.stage-testing .road-b { stroke-dasharray: 22 11; animation: decision-flow 1s linear infinite; }
+.stage-saved .road-c { stroke-dasharray: 24 9; animation: decision-flow 1.15s linear infinite; }
+.technical-drawer { animation: drawer-open .28s cubic-bezier(.22,.8,.22,1) both; }
+
+@keyframes soft-rise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes soft-drop { from { opacity: 0; transform: translateY(-9px); } }
+@keyframes visual-reveal { from { opacity: 0; transform: translateX(22px) scale(.985); } }
+@keyframes note-pop { from { opacity: 0; transform: translateY(7px) scale(.9) rotate(-2deg); } }
+@keyframes selected-settle { 0% { transform: scale(.98); } 65% { transform: scale(1.015); } 100% { transform: scale(1); } }
+@keyframes memory-breathe { 50% { box-shadow: 0 0 0 5px rgba(29,127,105,.09); } }
+@keyframes live-pulse { 70%,100% { box-shadow: 0 0 0 9px rgba(29,127,105,0); } }
+@keyframes saved-confirm { from { opacity: 0; transform: scale(.75) rotate(-7deg); } }
+@keyframes story-in { from { opacity: 0; transform: translateX(14px); } }
+@keyframes crowd-breathe { to { opacity: .38; transform: translateY(-3px); } }
+@keyframes decision-flow { to { stroke-dashoffset: -56; } }
+@keyframes eligible-arrive { from { opacity: .25; transform: translateY(7px) scale(.95); } }
+@keyframes drawer-open { from { opacity: 0; transform: translateY(-8px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

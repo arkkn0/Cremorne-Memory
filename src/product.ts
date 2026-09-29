@@ -66,7 +66,7 @@ export interface ProductContext {
 
 export const productContext = contextData as unknown as ProductContext
 
-const routeNames = ['Direct', 'Quieter alternative', 'Canopy alternative']
+const routeNames = ['Route B · Direct', 'Route A · Quieter', 'Shadow Route C']
 
 export function evaluateProductRoutes({
   destination,
