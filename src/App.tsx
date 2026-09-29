@@ -5,7 +5,7 @@ import {
   Navigation, Play, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
 } from 'lucide-react'
 import CremorneMap from './CremorneMap'
-import { FIRST_EXCEPTION, simulateScenario } from './engine'
+import { buildExperimentRule, FIRST_EXCEPTION, simulateScenario } from './engine'
 import { loadJourneyOutcomes, loadMemory, saveJourneyOutcome, saveRule } from './memory'
 import type { MemoryRule } from './domain'
 import {
@@ -23,7 +23,6 @@ type EngineStatus = 'ready' | 'running' | 'api' | 'local'
 const PATHS = { landing: '/', product: '/app' }
 const go = (path: string) => { window.location.href = path }
 const percentDelta = (value: number) => `${value < 0 ? '−' : '+'}${Math.abs(value)}%`
-const formatElapsed = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -53,7 +52,7 @@ function Landing() {
             <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try live proof <ArrowRight size={19} /></button>
             <span className="no-login"><Check size={16}/> No login · starts immediately</span>
           </div>
-          <div className="persona-hero"><div>M</div><span><q>I need to reach East Richmond by 4:20 without direct sun or glare. Show me what will work today.</q><small>Mia · Cremorne worker with albinism, photosensitivity and low vision</small></span></div>
+          <div className="persona-hero"><div>M</div><span><q>I plan my workday around light—the sun on my route, glare through a meeting-room window, even whether I can see the screen.</q><small>Mia · Cremorne worker with albinism, photosensitivity and low vision</small></span></div>
         </div>
 
         <div className="hero__visual" aria-label="Cremorne with overloaded and spare capacity">
@@ -113,8 +112,8 @@ function ProductApp() {
         <div className="product-status">{role === 'demo' && <span className="is-on"><Sparkles size={15}/>30 sec</span>}{role !== 'demo' && memory.length > 0 && <span className="is-on"><BrainCircuit size={15}/>Memory on</span>}<a href={PATHS.landing}><Home size={17} /><span>Home</span></a></div>
       </header>
       {role === 'demo' && <GuidedDemo setMemory={setMemory} onOpenWorker={() => { setWorkerMode('mia'); setRole('worker'); setTask('route') }} />}
-      {role === 'worker' && <WorkerExperience task={task} setTask={setTask} weather={demoWeather} memoryActive={memory.length > 0} workerMode={workerMode} />}
-      {role === 'operator' && <OperatorExperience weather={demoWeather} memory={memory} setMemory={setMemory} onSeeWorker={() => { setWorkerMode('explore'); setRole('worker'); setTask('route') }} />}
+      {role === 'worker' && <WorkerExperience task={task} setTask={setTask} weather={demoWeather} memory={memory} workerMode={workerMode} />}
+      {role === 'operator' && <OperatorExperience weather={demoWeather} memory={memory} setMemory={setMemory} onSeeWorker={() => { setWorkerMode('mia'); setRole('worker'); setTask('route') }} />}
     </div>
   )
 }
@@ -199,11 +198,11 @@ function GuidedDemo({ setMemory, onOpenWorker }: {
   )
 }
 
-function WorkerExperience({ task, setTask, weather, memoryActive, workerMode }: {
+function WorkerExperience({ task, setTask, weather, memory, workerMode }: {
   task: WorkerTask
   setTask: (task: WorkerTask) => void
   weather: { temperature: number; uvIndex: number; source: string }
-  memoryActive: boolean
+  memory: MemoryRule[]
   workerMode: WorkerMode
 }) {
   return (
@@ -213,7 +212,7 @@ function WorkerExperience({ task, setTask, weather, memoryActive, workerMode }: 
         <div role="group" aria-label="Choose worker task"><button className={task === 'route' ? 'is-active' : ''} onClick={() => setTask('route')}><MapIcon size={17} /> Plan a route</button><button className={task === 'space' ? 'is-active' : ''} onClick={() => setTask('space')}><Building2 size={17} /> Find a room</button></div>
         <div className="live-context"><b>DEMO DAY</b><span><ThermometerSun size={15} />{weather.temperature.toFixed(0)}°</span><span><Sun size={15} />UV {weather.uvIndex.toFixed(1)}</span></div>
       </header>
-      {task === 'route' ? <RouteJourney key={`route-${workerMode}`} weather={weather} memoryActive={memoryActive} workerMode={workerMode} /> : <SpaceJourney key={`space-${workerMode}`} workerMode={workerMode} />}
+      {task === 'route' ? <RouteJourney key={`route-${workerMode}`} weather={weather} memory={memory} workerMode={workerMode} /> : <SpaceJourney key={`space-${workerMode}`} workerMode={workerMode} />}
     </main>
   )
 }
@@ -223,21 +222,21 @@ function JourneyProgress({ stage }: { stage: JourneyStage }) {
   return <div className="journey-progress" aria-label="Journey progress">{['Your need', 'Choose', 'Complete'].map((label, index) => <div key={label} className={current >= index ? 'is-on' : ''}><i>{current > index ? <Check size={11} /> : index + 1}</i><span>{label}</span></div>)}</div>
 }
 
-function RouteJourney({ weather, memoryActive, workerMode }: { weather: { uvIndex: number }; memoryActive: boolean; workerMode: WorkerMode }) {
+function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: number }; memory: MemoryRule[]; workerMode: WorkerMode }) {
   const [stage, setStage] = useState<JourneyStage>('setup')
   const [brief, setBrief] = useState(workerMode === 'mia'
     ? 'I have albinism. Get me to East Richmond by 4:20pm with minimal direct sun and glare. I can wait up to 10 minutes.'
     : 'Get me to Richmond by 5:30pm. Prefer a less crowded route. I can wait up to 15 minutes.')
   const [selectedId, setSelectedId] = useState<string>()
-  const [feedback, setFeedback] = useState<'better' | 'same' | 'worse'>()
   const [startedAt, setStartedAt] = useState<number>()
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [personalOutcomes, setPersonalOutcomes] = useState(() => loadJourneyOutcomes())
   const parsedBrief = useMemo(() => parseRouteBrief(brief), [brief])
   const workers = demandAtTime(parsedBrief.destination, parsedBrief.departure)
-  const routes = useMemo(() => evaluateProductRoutes({ destination: parsedBrief.destination, need: parsedBrief.need, strength: parsedBrief.strength, flexibilityMin: parsedBrief.flexibilityMin, uvIndex: weather.uvIndex, workers, memoryActive, personalOutcomes }), [parsedBrief, weather.uvIndex, workers, memoryActive, personalOutcomes])
+  const routes = useMemo(() => evaluateProductRoutes({ destination: parsedBrief.destination, need: parsedBrief.need, strength: parsedBrief.strength, flexibilityMin: parsedBrief.flexibilityMin, uvIndex: weather.uvIndex, workers, memoryRules: memory, personalOutcomes }), [parsedBrief, weather.uvIndex, workers, memory, personalOutcomes])
   const selected = routes.find((route) => route.id === selectedId && route.eligible) ?? routes.find((route) => route.eligible) ?? routes[0]
   const noEligible = routes.every((route) => !route.eligible)
+  const journeyProgress = Math.min(96, Math.max(4, selected ? elapsedSeconds / (selected.durationMin * 60) * 100 : 4))
 
   useEffect(() => {
     if (stage !== 'active' || !startedAt) return
@@ -245,7 +244,7 @@ function RouteJourney({ weather, memoryActive, workerMode }: { weather: { uvInde
     return () => window.clearInterval(timer)
   }, [stage, startedAt])
 
-  const resetForInput = () => { setStage('setup'); setSelectedId(undefined); setStartedAt(undefined); setElapsedSeconds(0); setFeedback(undefined) }
+  const resetForInput = () => { setStage('setup'); setSelectedId(undefined); setStartedAt(undefined); setElapsedSeconds(0) }
   const findRoutes = () => { setSelectedId(routes.find((route) => route.eligible)?.id); setStage('results') }
   const startJourney = () => { setStartedAt(Date.now()); setElapsedSeconds(0); setStage('active') }
   const finishJourney = () => {
@@ -253,7 +252,6 @@ function RouteJourney({ weather, memoryActive, workerMode }: { weather: { uvInde
     setStage('feedback')
   }
   const recordFeedback = (value: 'better' | 'same' | 'worse') => {
-    setFeedback(value)
     setPersonalOutcomes(saveJourneyOutcome({ routeId: selected.id, routeName: selected.name, completedAt: new Date().toISOString(), elapsedSeconds, predictedMinutes: selected.durationMin, exposureIndex: selected.exposureIndex, feedback: value }))
     setStage('saved')
   }
@@ -276,22 +274,22 @@ function RouteJourney({ weather, memoryActive, workerMode }: { weather: { uvInde
         </div>}
 
         {stage === 'active' && <div className="journey-step active-journey">
-          <span className="step-kicker live"><i /> ROUTE ACTIVE</span><h1>{selected.name}</h1><div className="active-time"><strong>{formatElapsed(elapsedSeconds)}</strong><span>actual elapsed time</span></div><div className="live-expectation"><Clock3/><span><small>EXPECTED</small><strong>{selected.durationMin} min · arrival by {parsedBrief.deadlineLabel}</strong></span></div><div className="next-turn"><Navigation /><div><span>NEXT · HIGH-CONTRAST + VIBRATION CUE</span><strong>Continue along Balmain Street</strong><small>enter the covered passage to reduce direct sun and glare</small></div></div><button className="primary-action" onClick={finishJourney}>I’ve arrived <Check size={18} /></button>
+          <span className="step-kicker live"><i /> ROUTE ACTIVE</span><h1>{selected.name}</h1><div className="journey-live-progress"><div><span>Journey in progress</span><strong>On track</strong></div><div className="journey-live-progress__track" role="progressbar" aria-label="Estimated journey progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(journeyProgress)}><i style={{ width: `${journeyProgress}%` }} /></div></div><div className="live-expectation"><Clock3/><span><small>EXPECTED</small><strong>{selected.durationMin} min · arrival by {parsedBrief.deadlineLabel}</strong></span></div><div className="next-turn"><Navigation /><div><span>NEXT · HIGH-CONTRAST + VIBRATION CUE</span><strong>Continue along Balmain Street</strong><small>enter the covered passage to reduce direct sun and glare</small></div></div><button className="primary-action" onClick={finishJourney}>I’ve arrived <Check size={18} /></button>
         </div>}
 
         {stage === 'feedback' && <div className="journey-step arrival-card">
-          <div className="arrival-icon"><Check /></div><span className="step-kicker">OUTCOME CAPTURED</span><h1>Was this better?</h1><p>Your actual completion time is part of the outcome.</p><div className="arrival-metrics"><div><strong>{formatElapsed(elapsedSeconds)}</strong><span>actual elapsed</span></div><div><strong>{selected.durationMin}</strong><span>minutes predicted</span></div><div><strong>{selected.exposureIndex}</strong><span>UV load estimate</span></div></div><div className="feedback-row">{(['better', 'same', 'worse'] as const).map((value) => <button key={value} className={feedback === value ? 'is-active' : ''} onClick={() => recordFeedback(value)}>{value === 'better' ? 'Better' : value === 'same' ? 'Same' : 'Worse'}</button>)}</div>
+          <div className="arrival-icon"><Check /></div><span className="step-kicker">ARRIVED</span><h1>How did this journey feel?</h1><div className="arrival-metrics"><div><strong><Check size={18}/></strong><span>trip recorded</span></div><div><strong>{selected.durationMin}</strong><span>minutes expected</span></div><div><strong>{selected.exposureIndex}</strong><span>UV load estimate</span></div></div><div className="feedback-row">{(['better', 'same', 'worse'] as const).map((value) => <button key={value} onClick={() => recordFeedback(value)}>{value === 'better' ? 'Better' : value === 'same' ? 'Same' : 'Worse'}</button>)}</div>
         </div>}
 
         {stage === 'saved' && <div className="journey-step saved-card">
-          <div className="arrival-icon"><BrainCircuit /></div><span className="step-kicker">PERSONAL MEMORY UPDATED</span><h1>The next recommendation starts smarter.</h1><p className="memory-next">A comparable journey can now retrieve today’s actual time, exposure estimate and your <strong>{feedback}</strong> result before ranking.</p><div className="saved-rule"><Navigation /><span>{selected.name} · {formatElapsed(elapsedSeconds)}</span><ArrowRight /><strong>Next eligible set</strong></div><button className="primary-action" onClick={resetForInput}>Plan another journey <ArrowRight size={18} /></button>
+          <div className="arrival-icon"><BrainCircuit /></div><span className="step-kicker">PERSONAL MEMORY UPDATED</span><h1>Thanks, Mia.</h1><div className="feedback-saved"><Check/><span>Your experience is saved for your next similar journey.</span></div><button className="primary-action" onClick={resetForInput}>Plan another journey <ArrowRight size={18} /></button>
         </div>}
       </aside>
 
       <div className="journey-map">
         <CremorneMap routes={routes} selectedId={selected?.id} onSelect={(id) => { setSelectedId(id); if (stage === 'setup') setStage('results') }} showTrees />
-        <div className="map-context"><span><Trees size={15} /> canopy</span><span><Users size={15} /> {workers} expected</span>{memoryActive && <span className="memory-on"><BrainCircuit size={15} /> local rule applied</span>}</div>
-        {stage === 'active' && <div className="map-active-banner"><Navigation size={16} /><span>{formatElapsed(elapsedSeconds)} elapsed</span></div>}
+        <div className="map-context"><span><Trees size={15} /> canopy</span><span><Users size={15} /> {workers} expected</span>{memory.length > 0 && <span className="memory-on"><BrainCircuit size={15} /> local rule applied</span>}</div>
+        {stage === 'active' && <div className="map-active-banner"><Navigation size={16} /><span>Journey in progress</span></div>}
       </div>
     </section>
   )
@@ -304,28 +302,20 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
   const [brief, setBrief] = useState(initialBrief)
   const [appliedBrief, setAppliedBrief] = useState(initialBrief)
   const [selectedId, setSelectedId] = useState('boardroom')
-  const [bookingStage, setBookingStage] = useState<'available' | 'held' | 'booked'>('available')
-  const [holdRemaining, setHoldRemaining] = useState(300)
+  const [bookingStage, setBookingStage] = useState<'available' | 'booked'>('available')
   const parsedDraft = useMemo(() => parseSpaceBrief(brief), [brief])
   const parsedBrief = useMemo(() => parseSpaceBrief(appliedBrief), [appliedBrief])
   const results = useMemo(() => findSpaces({ people: parsedBrief.people, requireHybrid: parsedBrief.requireHybrid, requireAccessible: parsedBrief.requireAccessible, requiredEquipment: parsedBrief.requiredEquipment, timeLabel: parsedBrief.timeLabel }), [parsedBrief])
   const eligibleSpaces = results.filter((space) => space.eligible)
   const selected = eligibleSpaces.find((space) => space.id === selectedId) ?? eligibleSpaces[0] ?? results[0]
-  const chooseSpace = (id: string) => { setSelectedId(id); setBookingStage('available'); setHoldRemaining(300) }
-  const searchSpaces = () => { setAppliedBrief(brief); setBookingStage('available'); setHoldRemaining(300) }
-  const holdSlot = () => { setBookingStage('held'); setHoldRemaining(300) }
-
-  useEffect(() => {
-    if (bookingStage !== 'held') return
-    const timer = window.setInterval(() => setHoldRemaining((value) => value > 0 ? value - 1 : 0), 1000)
-    return () => window.clearInterval(timer)
-  }, [bookingStage])
+  const chooseSpace = (id: string) => { setSelectedId(id); setBookingStage('available') }
+  const searchSpaces = () => { setAppliedBrief(brief); setBookingStage('available') }
 
   return (
     <section className="space-experience">
       <aside className="space-search"><span className="step-kicker">{workerMode === 'mia' ? 'MIA’S WORKSPACE NEEDS' : 'WORKSPACE GUIDE'}</span><h1>What space do you need?</h1><p>{workerMode === 'mia' ? 'Sun control and low glare are part of eligibility.' : 'Describe the meeting, time and equipment.'}</p><label className="brief-composer"><span>SPACE BRIEF</span><textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4}/></label><div className="brief-understood"><span>UNDERSTOOD</span><div>{parsedDraft.chips.map((chip) => <b key={chip}>{chip}</b>)}</div></div><button className="primary-action space-search-action" onClick={searchSpaces}>Find spaces <ArrowRight size={17}/></button><div className="space-match-count"><strong>{eligibleSpaces.length}</strong><span>eligible at {parsedBrief.timeLabel}</span></div>{eligibleSpaces.length > 0 ? <div className="choice-list space-choice-list">{eligibleSpaces.map((space) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={selected.id === space.id ? 'is-selected' : ''}><i/><div><span>{space.accessClass === 'shared' ? 'SHARED SPACE' : 'INTERNAL SPACE'} · AVAILABLE</span><strong>{space.name.replace('CDH ', '')}</strong><small>{space.capacity} people · {space.availability.find((window) => window.startsWith(parsedBrief.timeLabel)) ?? space.availability[0]}</small></div><Check size={16}/></button>)}</div> : <div className="honest-gap"><ShieldAlert/><div><strong>No eligible space at {parsedBrief.timeLabel}</strong><span>Change the time or remove a non-essential requirement.</span></div></div>}</aside>
       <div className="space-canvas"><div className="space-floor-label">CDH · LEVEL 1</div>{results.map((space, index) => <button key={space.id} disabled={!space.eligible} onClick={() => chooseSpace(space.id)} className={`room-shape room-${index + 1} ${selected.id === space.id ? 'is-selected' : ''} ${space.eligible ? 'is-eligible' : 'is-blocked'}`}><Building2 /><strong>{space.name.replace('CDH ', '')}</strong><span>{space.capacity}</span></button>)}<div className="floor-corridor">SHARED CORRIDOR</div></div>
-      <aside className="space-confirm"><span className="step-kicker">{selected.eligible ? `ELIGIBLE ${selected.accessClass.toUpperCase()} SPACE` : 'NOT A MATCH'}</span><h2>{selected.name}</h2><div className="capacity-number"><strong>{selected.capacity}</strong><span>people</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selected.eligible && bookingStage === 'available' && <><div className="booking-time"><Clock3 /><span><small>AVAILABLE AT REQUESTED TIME</small><strong>{parsedBrief.timeLabel} · {selected.accessClass === 'shared' ? 'shared access rules apply' : 'internal access'}</strong></span></div><button className="primary-action" onClick={holdSlot}>Hold for 5 minutes <ArrowRight size={18} /></button></>}{selected.eligible && bookingStage === 'held' && <div className="booking-flow"><div className="hold-clock"><Clock3/><span><small>SLOT HELD</small><strong>{formatElapsed(holdRemaining)} remaining</strong></span></div><p>Review the room, equipment and access class before booking.</p><button className="primary-action" onClick={() => setBookingStage('booked')}>Confirm room <Check size={18}/></button><button className="secondary-action" onClick={() => setBookingStage('available')}>Release hold</button></div>}{selected.eligible && bookingStage === 'booked' && <div className="booking-flow booking-complete"><div className="arrival-icon"><Check/></div><span className="step-kicker">ROOM BOOKED</span><strong>{parsedBrief.timeLabel} · {selected.name}</strong><p>{selected.accessClass === 'shared' ? 'Shared access instructions will activate five minutes before the booking.' : 'The room is reserved within your internal workspace.'}</p><button className="secondary-action" onClick={() => setBookingStage('available')}>Find another room</button></div>}{!selected.eligible && <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by the brief</strong><span>{selected.blockers.join(' · ')}</span></div></div>}</aside>
+      <aside className="space-confirm"><span className="step-kicker">{selected.eligible ? `ELIGIBLE ${selected.accessClass.toUpperCase()} SPACE` : 'NOT A MATCH'}</span><h2>{selected.name}</h2><div className="capacity-number"><strong>{selected.capacity}</strong><span>people</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selected.eligible && bookingStage === 'available' && <><div className="booking-time"><Clock3 /><span><small>AVAILABLE AT REQUESTED TIME</small><strong>{parsedBrief.timeLabel} · {selected.accessClass === 'shared' ? 'shared access rules apply' : 'internal access'}</strong></span></div><button className="primary-action" onClick={() => setBookingStage('booked')}>Book this room <Check size={18} /></button></>}{selected.eligible && bookingStage === 'booked' && <div className="booking-flow booking-complete"><div className="arrival-icon"><Check/></div><span className="step-kicker">ROOM BOOKED</span><strong>{parsedBrief.timeLabel} · {selected.name}</strong><p>{selected.accessClass === 'shared' ? 'Shared access instructions are included with the booking.' : 'The room is reserved within your internal workspace.'}</p><button className="secondary-action" onClick={() => setBookingStage('available')}>Find another room</button></div>}{!selected.eligible && <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by the brief</strong><span>{selected.blockers.join(' · ')}</span></div></div>}</aside>
     </section>
   )
 }
@@ -333,6 +323,10 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
 function OperatorProgress({ stage }: { stage: OperatorStage }) {
   const current = stage === 'detect' ? 0 : stage === 'testing' ? 1 : stage === 'compare' ? 2 : 3
   return <div className="operator-progress">{['Define', 'Test', 'Measure', 'Publish'].map((label, index) => <div key={label} className={current >= index ? 'is-on' : ''}><i>{current > index ? <Check size={11}/> : index + 1}</i><span>{label}</span></div>)}</div>
+}
+
+function LoadSplit({ label, loads, workers }: { label: string; loads: Record<'A' | 'B' | 'C', number>; workers: number }) {
+  return <div className="load-split"><strong>{label}</strong><div>{(['A', 'B', 'C'] as const).map((route) => <span key={route} style={{ flex: loads[route] }} className={`load-${route.toLowerCase()}`} title={`Route ${route}: ${loads[route]} workers`}>{route}<small>{Math.round(loads[route] / workers * 100)}%</small></span>)}</div></div>
 }
 
 function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
@@ -345,6 +339,7 @@ function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
   const [experimentBrief, setExperimentBrief] = useState('Redistribute 300 workers from Church Street over 15 minutes. Protect low-UV and mobility needs.')
   const parsedExperiment = useMemo(() => parseExperimentBrief(experimentBrief), [experimentBrief])
   const [result, setResult] = useState(() => simulateScenario(300, 42))
+  const [candidateRule, setCandidateRule] = useState<MemoryRule>(FIRST_EXCEPTION)
   const [engineStatus, setEngineStatus] = useState<EngineStatus>('ready')
   const predictedLoad = Math.min(99, Math.round(72 + parsedExperiment.workers / 15))
   const frictionMinutesRemoved = Math.round(parsedExperiment.workers * Math.abs(result.walkingDelta) / 100 * 10)
@@ -352,23 +347,29 @@ function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
     setStage('testing')
     setEngineStatus('running')
     const minimumRunTime = new Promise((resolve) => window.setTimeout(resolve, 1300))
+    const uvIndex = Math.max(8.2, weather.uvIndex)
+    const localResult = simulateScenario(parsedExperiment.workers, 42, parsedExperiment.horizonMin)
+    const localRule = buildExperimentRule({ place: parsedExperiment.place, uvIndex, crowding: predictedLoad, result: localResult })
 
     try {
-      const response = await fetch(`/api/decision?need=standard&uv=${Math.max(8.2, weather.uvIndex)}&temperature=31&crowding=${predictedLoad}&workers=${parsedExperiment.workers}&seed=42&memory=0`)
+      const query = new URLSearchParams({ need: 'standard', uv: String(uvIndex), temperature: '31', crowding: String(predictedLoad), workers: String(parsedExperiment.workers), horizon: String(parsedExperiment.horizonMin), seed: '42', memory: '0', place: parsedExperiment.place })
+      const response = await fetch(`/api/decision?${query.toString()}`)
       const contentType = response.headers.get('content-type') ?? ''
       if (!response.ok || !contentType.includes('application/json')) throw new Error('Decision API unavailable')
-      const data = await response.json()
+      const data = await response.json() as { experiment: ReturnType<typeof simulateScenario>; candidateRule: MemoryRule }
       setResult(data.experiment)
+      setCandidateRule(data.candidateRule)
       setEngineStatus('api')
     } catch {
-      setResult(simulateScenario(parsedExperiment.workers, 42))
+      setResult(localResult)
+      setCandidateRule(localRule)
       setEngineStatus('local')
     }
 
     await minimumRunTime
     setStage('compare')
   }
-  const storeRule = () => { setMemory(saveRule(FIRST_EXCEPTION)); setStage('saved') }
+  const storeRule = () => { setMemory(saveRule(candidateRule)); setStage('saved') }
   return (
     <main className="operator-clear">
       <header className="operator-heading"><div><span className="step-kicker">CDH EXPERIMENT LAB · CONTROLLED COMPARISON</span><h1>Measure an intervention before it becomes guidance.</h1></div><OperatorProgress stage={stage} /></header>
@@ -380,17 +381,18 @@ function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
         </div>
         <aside className="operator-decision">
           {stage === 'detect' && <><span className="step-kicker">1 · DEFINE THE TEST</span><h2>What should CDH evaluate?</h2><label className="brief-composer operator-brief"><span>INTERVENTION BRIEF</span><textarea value={experimentBrief} onChange={(event) => setExperimentBrief(event.target.value)} rows={4}/></label><div className="brief-understood"><span>TEST DESIGN</span><div>{parsedExperiment.chips.map((chip) => <b key={chip}>{chip}</b>)}</div></div><div className="operator-signal operator-signal--compact"><strong>{predictedLoad}%</strong><span>predicted load · {parsedExperiment.horizonMin}-minute horizon</span></div><button className="primary-action" onClick={runTest}>Run controlled comparison <Play size={18}/></button></>}
-          {stage === 'testing' && <div className="testing-state"><div className="testing-orb"><Activity/></div><span>RUNNING BASELINE VS INTERVENTION</span><h2>Same {parsedExperiment.workers} workers. Same UV. Same seed.</h2><p>Only the decision logic changes.</p></div>}
-          {stage === 'compare' && <><span className="step-kicker">3 · MEASURED EFFECT</span><h2>The precinct improved. A guardrail failed.</h2><div className="result-pair"><div><span>PEAK CROWDING</span><strong>{percentDelta(result.crowdingDelta)}</strong><small>modelled change</small></div><div><span>FRICTION REMOVED</span><strong>{frictionMinutesRemoved}</strong><small>worker-minutes</small></div></div><div className="effectiveness-row"><span><small>AVG WALK TIME</small><strong>{percentDelta(result.walkingDelta)}</strong></span><span><small>CONFIDENCE</small><strong>{Math.round(FIRST_EXCEPTION.confidence * 100)}%</strong></span></div><div className="exception-found"><ShieldAlert/><div><span>GUARDRAIL FAILED</span><strong>Low-UV exposure {percentDelta(result.uvDeltaLowUv)}</strong><small>Mobility friction {percentDelta(result.mobilityFrictionDelta)}</small></div></div><p className="synthetic-label">Synthetic controlled MVP run</p><button className="primary-action" onClick={storeRule}>Adapt and publish rule <BrainCircuit size={18}/></button></>}
-          {stage === 'saved' && <><div className="saved-badge"><BrainCircuit/></div><span className="step-kicker">4 · PUBLISHED TO MEMORY</span><h2>The measured exception now changes worker guidance.</h2><div className="operator-rule"><span>WHEN</span><strong>UV ≥ 7 + low-UV requirement</strong><span>THEN</span><strong>Filter Route B before ranking</strong></div><div className="published-impact"><Check/><span><strong>{memory.some((rule) => rule.id === FIRST_EXCEPTION.id) ? 'Operating rule active' : 'Rule saved'}</strong><small>{frictionMinutesRemoved} modelled friction minutes retained with its guardrail</small></span></div><button className="primary-action" onClick={onSeeWorker}>Open Worker Guide <ArrowRight size={18}/></button><button className="secondary-action" onClick={() => setStage('detect')}>Define another experiment</button></>}
+          {stage === 'testing' && <div className="testing-state"><div className="testing-orb"><Activity/></div><span>DECISION API · CONTROLLED RUN</span><h2>Two allocations. The same {parsedExperiment.workers} workers, UV and seed.</h2><p>The backend changes only the allocation policy, then compares outcomes.</p></div>}
+          {stage === 'compare' && <><span className="step-kicker">3 · MEASURED EFFECT</span><h2>The redistribution helped overall—and exposed a boundary.</h2><div className="allocation-compare"><LoadSplit label="CURRENT FLOW" loads={result.baselineLoads} workers={parsedExperiment.workers}/><ArrowRight/><LoadSplit label="TESTED REDISTRIBUTION" loads={result.interventionLoads} workers={parsedExperiment.workers}/></div><div className="result-pair"><div><span>PEAK CROWDING</span><strong>{percentDelta(result.crowdingDelta)}</strong><small>modelled change</small></div><div><span>FRICTION REMOVED</span><strong>{frictionMinutesRemoved}</strong><small>worker-minutes</small></div></div><div className="effectiveness-row"><span><small>AVG WALK TIME</small><strong>{percentDelta(result.walkingDelta)}</strong></span><span><small>CONFIDENCE</small><strong>{Math.round(candidateRule.confidence * 100)}%</strong></span></div><div className="exception-found"><ShieldAlert/><div><span>BOUNDARY FOUND</span><strong>Low-UV exposure {percentDelta(result.uvDeltaLowUv)}</strong><small>Mobility friction {percentDelta(result.mobilityFrictionDelta)}</small></div></div><p className="synthetic-label">Synthetic controlled MVP run</p><button className="primary-action" onClick={storeRule}>Publish the boundary <BrainCircuit size={18}/></button></>}
+          {stage === 'saved' && <><div className="saved-badge"><BrainCircuit/></div><span className="step-kicker">4 · PUBLISHED TO MEMORY</span><h2>This result now changes Mia’s next decision.</h2><div className="operator-rule"><span>WHEN</span><strong>{candidateRule.context.place} · UV ≥ {candidateRule.context.uvMin} · low-UV required</strong><span>THEN</span><strong>Filter Route B before ranking</strong></div><div className="published-impact"><Check/><span><strong>{memory.some((rule) => rule.id === candidateRule.id) ? 'Rule available to Worker Guide' : 'Publishing rule'}</strong><small>Outcome and boundary travel together</small></span></div><button className="primary-action" onClick={onSeeWorker}>See Mia’s next decision <ArrowRight size={18}/></button><button className="secondary-action" onClick={() => setStage('detect')}>Define another experiment</button></>}
         </aside>
       </section>
-      <section className="technical-drawer" aria-label="How fragmented data becomes a guided action">
-        <div><strong>FRAGMENTED SIGNALS</strong><span>weather · crowding · capacity · access</span></div><ArrowRight/>
-        <div><strong>STRUCTURED BRIEF</strong><span>need · time · constraints · guardrails</span></div><ArrowRight/>
-        <div><strong>GUIDE / TEST</strong><span>eligible action · controlled comparison</span></div><ArrowRight/>
-        <div><strong>MEASURE + MEMORY</strong><span>outcome · exception · next prediction</span></div>
-        <span className={`engine-status is-${engineStatus}`}>{engineStatus === 'api' ? 'Decision API verified' : engineStatus === 'running' ? 'Engine running' : engineStatus === 'local' ? 'Local engine verified' : 'Decision engine ready'}</span>
+      <section className="technical-drawer" aria-label="Experiment data flow">
+        <div><strong>1 · SCENARIO</strong><span>brief + signals</span></div><ArrowRight/>
+        <div><strong>2 · DECISION API</strong><span>two allocation policies</span></div><ArrowRight/>
+        <div><strong>3 · OUTCOME</strong><span>average + cohorts</span></div><ArrowRight/>
+        <div><strong>4 · MEMORY</strong><span>candidate rule + boundary</span></div><ArrowRight/>
+        <div><strong>5 · WORKER GUIDE</strong><span>eligible set re-ranked</span></div>
+        <span className={`engine-status is-${engineStatus}`}>{engineStatus === 'api' ? 'Candidate rule returned' : engineStatus === 'running' ? 'Comparing allocations' : engineStatus === 'local' ? 'Local fallback returned' : 'Ready'}</span>
       </section>
     </main>
   )

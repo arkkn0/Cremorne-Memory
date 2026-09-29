@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chooseRoute, evaluateRoutes, FIRST_EXCEPTION, simulateScenario } from './engine'
+import { buildExperimentRule, chooseRoute, evaluateRoutes, FIRST_EXCEPTION, simulateScenario } from './engine'
 import type { Scenario } from './domain'
 
 const scenario: Scenario = {
@@ -36,6 +36,24 @@ describe('Cremorne decision engine', () => {
 
   it('preserves the requested worker count across route loads', () => {
     const output = simulateScenario(425, 42)
-    expect(output.routeLoads.A + output.routeLoads.B + output.routeLoads.C).toBe(425)
+    expect(output.baselineLoads.A + output.baselineLoads.B + output.baselineLoads.C).toBe(425)
+    expect(output.interventionLoads.A + output.interventionLoads.B + output.interventionLoads.C).toBe(425)
+  })
+
+  it('builds a publishable rule from the measured backend result', () => {
+    const result = simulateScenario(300, 42)
+    const rule = buildExperimentRule({ place: 'Church Street', uvIndex: 8.2, crowding: 92, result })
+    expect(rule).toMatchObject({
+      context: { place: 'Church Street', uvMin: 8, crowdingMin: 92 },
+      outcome: { crowdingDelta: -20, walkingDelta: -7 },
+      exception: { functionalNeed: 'low-uv', delta: 40 },
+    })
+  })
+
+  it('changes the tested redistribution when the experiment horizon changes', () => {
+    const shortRun = simulateScenario(300, 42, 5)
+    const fullRun = simulateScenario(300, 42, 15)
+    expect(shortRun.interventionLoads.B).toBeLessThan(fullRun.interventionLoads.B)
+    expect(Math.abs(shortRun.crowdingDelta)).toBeLessThan(Math.abs(fullRun.crowdingDelta))
   })
 })

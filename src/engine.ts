@@ -70,18 +70,61 @@ const seedNoise = (seed: number) => {
   return value - Math.floor(value)
 }
 
-export function simulateScenario(workers = 300, seed = 42): SimulationResult {
+export function simulateScenario(workers = 300, seed = 42, horizonMin = 15): SimulationResult {
   const wobble = seed === 42 ? 0 : Math.round((seedNoise(seed) - 0.45) * 2)
-  const bLoad = Math.round(workers * 0.62)
-  const aLoad = Math.round(workers * 0.2)
-  const cLoad = workers - bLoad - aLoad
+  const shiftStrength = Math.max(0.35, Math.min(1.25, horizonMin / 15))
+  const baselineA = Math.round(workers * 0.82)
+  const baselineB = Math.round(workers * 0.1)
+  const baselineC = workers - baselineA - baselineB
+  const interventionBShare = 0.1 + (0.62 - 0.1) * shiftStrength
+  const interventionCShare = 0.08 + (0.18 - 0.08) * shiftStrength
+  const interventionB = Math.round(workers * interventionBShare)
+  const interventionC = Math.round(workers * interventionCShare)
+  const interventionA = workers - interventionB - interventionC
 
   return {
-    crowdingDelta: -20 + wobble,
-    walkingDelta: -7,
-    uvDeltaLowUv: 40 + wobble,
-    mobilityFrictionDelta: 15,
-    routeLoads: { A: aLoad, B: bLoad, C: cLoad },
+    crowdingDelta: Math.round(-20 * shiftStrength) + wobble,
+    walkingDelta: Math.round(-7 * shiftStrength),
+    uvDeltaLowUv: Math.round(40 * shiftStrength) + wobble,
+    mobilityFrictionDelta: Math.round(15 * shiftStrength),
+    baselineLoads: { A: baselineA, B: baselineB, C: baselineC },
+    interventionLoads: { A: interventionA, B: interventionB, C: interventionC },
+  }
+}
+
+export function buildExperimentRule({
+  place,
+  uvIndex,
+  crowding,
+  result,
+}: {
+  place: string
+  uvIndex: number
+  crowding: number
+  result: SimulationResult
+}): MemoryRule {
+  const safePlace = place.trim() || 'Church Street'
+  const slug = safePlace.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  return {
+    id: `${slug || 'cremorne'}-high-uv-route-b`,
+    createdAt: new Date().toISOString(),
+    context: {
+      uvMin: Math.max(0, Math.floor(uvIndex)),
+      crowdingMin: Math.max(0, Math.min(100, Math.round(crowding))),
+      place: safePlace,
+    },
+    routeId: 'B',
+    outcome: {
+      crowdingDelta: result.crowdingDelta,
+      walkingDelta: result.walkingDelta,
+    },
+    exception: {
+      functionalNeed: 'low-uv',
+      metric: 'direct UV exposure',
+      delta: result.uvDeltaLowUv,
+    },
+    confidence: 0.82,
+    deploymentBoundary: `Filter Route B for low-UV journeys when UV ≥ ${Math.max(0, Math.floor(uvIndex))}.`,
   }
 }
 

@@ -1,5 +1,6 @@
 import contextData from './cremorne-context.json'
 import type { JourneyOutcome } from './memory'
+import type { MemoryRule } from './domain'
 
 export type ProductNeed = 'lower-uv' | 'lower-crowding' | 'fastest' | 'step-free'
 export type ConstraintStrength = 'required' | 'preferred'
@@ -188,7 +189,7 @@ export function evaluateProductRoutes({
   flexibilityMin = 0,
   uvIndex,
   workers,
-  memoryActive,
+  memoryRules = [],
   personalOutcomes = [],
 }: {
   destination: DestinationId
@@ -197,12 +198,17 @@ export function evaluateProductRoutes({
   flexibilityMin?: number
   uvIndex: number
   workers: number
-  memoryActive: boolean
+  memoryRules?: MemoryRule[]
   personalOutcomes?: JourneyOutcome[]
 }): EvaluatedProductRoute[] {
   const routes = productContext.routeSets[destination]
   const capacities = destination === 'richmond' ? [92, 78, 64] : [72, 62, 58]
-  const loadShares = memoryActive ? [0.34, 0.32, 0.34] : [0.52, 0.29, 0.19]
+  const matchingLowUvRule = memoryRules.find((rule) =>
+    rule.routeId === 'B'
+    && rule.exception.functionalNeed === 'low-uv'
+    && uvIndex >= rule.context.uvMin,
+  )
+  const loadShares = [0.52, 0.29, 0.19]
 
   const evaluated = routes.map((route, index) => {
     const basePredictedLoad = Math.round(workers * loadShares[index])
@@ -221,9 +227,9 @@ export function evaluateProductRoutes({
       reasons.push('Kerb and crossing accessibility is not verified in the current evidence')
     }
 
-    if (need === 'lower-uv' && strength === 'required' && memoryActive && index === 0 && uvIndex >= 7) {
+    if (need === 'lower-uv' && strength === 'required' && matchingLowUvRule && index === 0) {
       eligible = false
-      reasons.push('Memory: this direct route previously increased exposure for low-UV users')
+      reasons.push(`Memory from ${matchingLowUvRule.context.place}: this direct route increased exposure for low-UV users`)
     }
 
     if (remainingCapacity < 0) {

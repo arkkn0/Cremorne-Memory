@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateProductRoutes, findSpaces, parseExperimentBrief, parseRouteBrief, parseSpaceBrief, productContext } from './product'
+import { FIRST_EXCEPTION } from './engine'
 
 describe('public-evidence product layer', () => {
   it('loads real Cremorne context with routes, trees and station baselines', () => {
@@ -14,7 +15,7 @@ describe('public-evidence product layer', () => {
       need: 'lower-uv',
       uvIndex: 8.2,
       workers: 65,
-      memoryActive: true,
+      memoryRules: [FIRST_EXCEPTION],
     })
 
     expect(routes.find((route) => route.id === 'east-richmond-1')).toMatchObject({ eligible: false })
@@ -27,7 +28,7 @@ describe('public-evidence product layer', () => {
       need: 'step-free',
       uvIndex: 6,
       workers: 50,
-      memoryActive: false,
+      memoryRules: [],
     })
     expect(routes.every((route) => !route.eligible)).toBe(true)
   })
@@ -56,13 +57,13 @@ describe('public-evidence product layer', () => {
       flexibilityMin: 10,
       uvIndex: 8.2,
       workers: 97,
-      memoryActive: true,
+      memoryRules: [FIRST_EXCEPTION],
     })
     expect(routes.find((route) => route.id === 'east-richmond-2')?.suggestedDelayMin).toBe(8)
   })
 
   it('feeds a worker outcome back into the next route ranking', () => {
-    const input = { destination: 'east-richmond' as const, need: 'lower-crowding' as const, strength: 'preferred' as const, flexibilityMin: 10, uvIndex: 8.2, workers: 97, memoryActive: true }
+    const input = { destination: 'east-richmond' as const, need: 'lower-crowding' as const, strength: 'preferred' as const, flexibilityMin: 10, uvIndex: 8.2, workers: 97, memoryRules: [FIRST_EXCEPTION] }
     const baseline = evaluateProductRoutes(input)
     const route = baseline.find((option) => option.eligible)!
     const withFeedback = evaluateProductRoutes({ ...input, personalOutcomes: [{ routeId: route.id, routeName: route.name, completedAt: new Date().toISOString(), elapsedSeconds: 20, predictedMinutes: route.durationMin, exposureIndex: route.exposureIndex, feedback: 'worse' }] })

@@ -62,5 +62,6 @@ export interface SimulationResult {
   walkingDelta: number
   uvDeltaLowUv: number
   mobilityFrictionDelta: number
-  routeLoads: Record<RouteId, number>
+  baselineLoads: Record<RouteId, number>
+  interventionLoads: Record<RouteId, number>
 }

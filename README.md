@@ -40,7 +40,7 @@ The worker does not choose an implementation category such as **Internal** or **
 The same pattern drives both use cases:
 
 - **Movement:** destination, deadline, functional need and time flexibility → route × departure time.
-- **Workspace:** people, time, equipment, sun/glare controls and accessibility → eligible room × time window → hold → confirmed booking.
+- **Workspace:** people, time, equipment, sun/glare controls and accessibility → eligible room × time window → confirmed booking.
 
 Mia's journey is the hero application: a Cremorne worker with albinism, photosensitivity and low vision. Her route matching includes direct UV, glare, covered passages, arrival time and high-contrast guidance. Her workspace matching includes adjustable blinds, low-glare lighting and meeting equipment. The engine stores functional requirements rather than a medical diagnosis. Sub-minute hackathon interactions are recorded but excluded from the travel-time score; real observed duration contributes once the journey exceeds one minute.
 
@@ -51,10 +51,12 @@ Mia's journey is the hero application: a Cremorne worker with albinism, photosen
 
 ## What is measured
 
-The demonstrator holds demand, conditions and seed constant, then compares two decision logics:
+The CDH experiment holds demand, conditions and seed constant while the decision API compares two allocations:
 
-1. a first pass that optimises aggregate outcomes;
-2. a Memory-aware pass that applies a previously measured exception before matching.
+1. the current flow across Routes A, B and C;
+2. a tested redistribution across the same three routes.
+
+The API returns both allocations, their aggregate and cohort outcomes, and a candidate operating rule. Publishing that rule stores the measured context, outcome and exception in browser Memory. The Worker Guide then consumes that exact rule object: when Mia's low-UV requirement and the current UV match its boundary, Route B leaves the eligible set before ranking.
 
 The current intervention outputs are synthetic MVP measurements and are labelled that way in the product. They demonstrate the evaluation mechanism; they are not presented as field-validated impact.
 
