@@ -39,7 +39,7 @@ function Landing() {
       <header className="landing-nav wrap">
         <Brand />
         <nav className="landing-nav__links" aria-label="Landing navigation">
-          <button className="button button--ink" onClick={() => go(PATHS.product)}>Try the app <ArrowRight size={17} /></button>
+          <button className="button button--ink" onClick={() => go(PATHS.product)}>Try live demo <ArrowRight size={17} /></button>
         </nav>
       </header>
 
@@ -47,9 +47,9 @@ function Landing() {
         <div className="hero__copy">
           <p className="eyebrow"><span className="live-dot" /> CREMORNE MEMORY</p>
           <h1>Use the capacity <em>Cremorne already has.</em></h1>
-          <p className="hero__lead">A live decision layer that matches workers to genuinely usable routes and rooms—then remembers what worked, for whom and under which conditions.</p>
+          <p className="hero__lead">Match workers to usable routes and rooms—then turn every measured outcome into a smarter next decision.</p>
           <div className="hero__actions">
-            <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try the 30-second demo <ArrowRight size={19} /></button>
+            <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try live demo <ArrowRight size={19} /></button>
             <span className="no-login"><Check size={16}/> No login · starts immediately</span>
           </div>
         </div>
@@ -63,15 +63,15 @@ function Landing() {
       </section>
 
       <section className="value-triad wrap" aria-label="How Cremorne Memory creates value">
-        <article><span><Activity/></span><div><strong>Live State</strong><p>See crowding, UV and capacity at the time of use.</p></div></article>
-        <article><span><CircleGauge/></span><div><strong>Capacity Graph</strong><p>Filter routes, rooms and time windows by real constraints.</p></div></article>
-        <article><span><BrainCircuit/></span><div><strong>Memory</strong><p>Turn measured outcomes into the next operating decision.</p></div></article>
+        <article><span><Activity/></span><div><strong>Live State</strong><p>Crowding · UV · capacity</p></div></article>
+        <article><span><CircleGauge/></span><div><strong>Capacity Graph</strong><p>Routes · rooms · time</p></div></article>
+        <article><span><BrainCircuit/></span><div><strong>Memory</strong><p>Measured outcome → next decision</p></div></article>
       </section>
 
       <section className="landing-proof">
         <div className="wrap landing-proof__inner">
-          <div><span>THE DIFFERENCE</span><strong>A forecast says what may happen.<br/>Memory changes what happens next.</strong></div>
-          <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try the app <ArrowRight size={19}/></button>
+          <div><span>THE DIFFERENCE</span><strong>Prediction sees what may happen.<br/>Memory improves what happens next.</strong></div>
+          <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try live demo <ArrowRight size={19}/></button>
         </div>
       </section>
     </main>
@@ -131,7 +131,7 @@ function GuidedDemo({ setMemory, onOpenWorker }: {
   return (
     <main className={`guided-demo demo-${stage}`}>
       <header className="demo-heading">
-        <div><span>30-SECOND LIVE PROOF</span><h1>Watch one measured outcome change the next decision.</h1></div>
+        <div><span>30-SECOND LIVE PROOF</span><h1>One outcome changes the next decision.</h1></div>
         <div className="demo-context"><span><Sun/>High UV · 8.2</span><span><Activity/>Crowding rising</span><span><Users/>300 workers</span></div>
       </header>
 
@@ -153,36 +153,36 @@ function GuidedDemo({ setMemory, onOpenWorker }: {
         </div>
 
         <aside className="demo-story" aria-live="polite">
-          {stage === 'scenario' && <>
+          {stage === 'scenario' && <div className="demo-story__stage" key="scenario">
             <span className="step-kicker">1 · SAME SCENARIO</span>
             <h2>Can Route B relieve the crowd?</h2>
-            <p>CDH first tests the precinct-wide result. Mia is one of 300 workers in the scenario.</p>
-            <div className="demo-route-list"><div><i className="a"/><strong>Route A</strong><span>9 min · step-free</span></div><div><i className="b"/><strong>Route B</strong><span>7 min · direct</span></div><div><i className="c"/><strong>Shadow C</strong><span>8 min · shaded</span></div></div>
-            <button className="primary-action" onClick={() => setStage('first-pass')}>Run aggregate test <Play size={18}/></button>
-          </>}
-          {stage === 'first-pass' && <>
+            <p>Test one redistribution across the same 300 workers.</p>
+            <div className="demo-question"><span>FASTEST</span><strong>Route B · 7 min</strong><ArrowRight/></div>
+            <button className="primary-action" onClick={() => setStage('first-pass')}>Run the test <Play size={18}/></button>
+          </div>}
+          {stage === 'first-pass' && <div className="demo-story__stage" key="first-pass">
             <span className="step-kicker">2 · APPARENT SUCCESS</span>
             <h2>Route B looks successful.</h2>
             <div className="result-pair"><div><span>CROWDING</span><strong>{percentDelta(result.crowdingDelta)}</strong><small>better</small></div><div><span>WALK TIME</span><strong>{percentDelta(result.walkingDelta)}</strong><small>better</small></div></div>
             <div className="apparent-winner"><Check/><span><small>BEST PRECINCT AVERAGE</small><strong>Route B · Direct</strong></span></div>
             <button className="primary-action" onClick={() => setStage('reveal')}>Who did we miss? <ArrowRight size={18}/></button>
-          </>}
-          {stage === 'reveal' && <>
+          </div>}
+          {stage === 'reveal' && <div className="demo-story__stage" key="reveal">
             <span className="step-kicker coral">3 · MEASURE THE OUTCOME</span>
             <h2>The average hid two failures.</h2>
             <div className="demo-exceptions"><div><Sun/><span>LOW-UV COHORT<strong>Exposure {percentDelta(result.uvDeltaLowUv)}</strong></span></div><div><Navigation/><span>MOBILITY COHORT<strong>Friction {percentDelta(result.mobilityFrictionDelta)}</strong></span></div></div>
             <p className="demo-insight">A successful average is not a safe universal rule.</p>
             <button className="primary-action" onClick={rememberAndRetry}>Remember the exception <BrainCircuit size={18}/></button>
-          </>}
-          {stage === 'remembered' && <>
+          </div>}
+          {stage === 'remembered' && <div className="demo-story__stage" key="remembered">
             <span className="step-kicker">4 · NEXT DECISION</span>
-            <h2>Same day. Better eligible set.</h2>
+            <h2>Memory changes the next decision.</h2>
             <div className="remembered-choice blocked"><X/><span><small>ROUTE B</small><strong>Outside Mia’s eligible set</strong></span></div>
             <div className="remembered-choice eligible"><Check/><span><small>SHADOW ROUTE C</small><strong>Eligible · lower exposure · on time</strong></span></div>
             <div className="remembered-rule"><span>WHEN</span><strong>UV ≥ 7 + low-UV required</strong><span>THEN</span><strong>Filter Route B before ranking</strong></div>
             <button className="primary-action" onClick={onOpenWorker}>Continue as Mia <ArrowRight size={18}/></button>
             <button className="secondary-action" onClick={() => setStage('scenario')}>Replay the proof</button>
-          </>}
+          </div>}
         </aside>
       </section>
 
