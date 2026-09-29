@@ -6,16 +6,14 @@ Cremorne Memory combines a public-facing product story with a working decision p
 
 ## Product surfaces
 
-- `/` — concise product landing page with a unified Cremorne hero and interactive Memory mechanism
-- `/app` — working product with four connected views:
-  - **Worker map:** real pedestrian geometry, Victorian tree data, station-demand baseline, weather forecast and modelled arrival capacity
-  - **Precinct lab:** baseline versus Memory-aware controlled simulation
-  - **Spaces:** the same eligibility model applied to meeting capacity
-  - **Memory:** inspectable local operating rule, deployment boundary and evidence sources
+- `/` — concise product landing page that explains one outcome and one four-step flow
+- `/app` — one product with two clearly separated roles:
+  - **Worker:** set a functional requirement, choose an eligible route, start the trip, arrive and record lightweight feedback; or find and hold an eligible workspace
+  - **CDH operator:** detect a hotspot, test one intervention under controlled conditions, compare aggregate and cohort outcomes, then save an exception-aware operating rule
 - `/api/decision` — deterministic serverless decision endpoint used by the demonstrator
 - `/api/health` — deployment health endpoint
 
-No account or login is required.
+No account or login is required. Evidence expands inside the current task; the worker is never redirected into the operator workflow.
 
 ## What is measured
 
@@ -84,6 +82,7 @@ Open `http://localhost:4173` and select **Try the product**.
 ## Verify
 
 ```bash
+npm run lint
 npm test
 npm run build
 ```

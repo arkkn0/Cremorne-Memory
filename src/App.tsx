@@ -1,110 +1,115 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Activity, ArrowRight, BrainCircuit, Building2, Check, ChevronRight,
-  CircleGauge, ExternalLink, FlaskConical, Layers3, Map as MapIcon, Play,
-  RotateCcw, Route, ServerCog, ShieldAlert, Sun, ThermometerSun, Trees, Users, X,
+  Activity, ArrowLeft, ArrowRight, BrainCircuit, Building2, Check, ChevronDown,
+  CircleGauge, Clock3, ExternalLink, FlaskConical, Home, Map as MapIcon,
+  Navigation, Play, Route, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
 } from 'lucide-react'
 import CremorneMap from './CremorneMap'
-import { FIRST_EXCEPTION, simulateScenario } from './engine'
-import { clearMemory, loadMemory, saveRule } from './memory'
+import { FIRST_EXCEPTION } from './engine'
+import { loadMemory, saveRule } from './memory'
 import type { MemoryRule } from './domain'
 import {
-  demandAtTime, evaluateProductRoutes, findSpaces, productContext,
+  demandAtTime, evaluateProductRoutes, findSpaces,
   type DestinationId, type ProductNeed,
 } from './product'
 
-type AppView = 'worker' | 'lab' | 'spaces' | 'memory'
-type LabPhase = 'ready' | 'running' | 'measured' | 'stored' | 'replayed'
+type ProductRole = 'worker' | 'operator'
+type WorkerTask = 'route' | 'space'
+type JourneyStage = 'setup' | 'results' | 'active' | 'feedback' | 'saved'
+type OperatorStage = 'detect' | 'testing' | 'compare' | 'saved'
 
 const PATHS = { landing: '/', product: '/app' }
 const go = (path: string) => { window.location.href = path }
 
-function Brand({ dark = false }: { dark?: boolean }) {
+function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <a className={`brand ${dark ? 'brand--dark' : ''}`} href={PATHS.landing} aria-label="Cremorne Memory home">
+    <a className="brand" href={PATHS.landing} aria-label="Cremorne Memory home">
       <span className="brand__mark"><span /><span /><span /></span>
-      <span>Cremorne <strong>Memory</strong></span>
+      {!compact && <span>Cremorne <strong>Memory</strong></span>}
     </a>
   )
 }
 
 function Landing() {
-  const [step, setStep] = useState(0)
-  const loop = [
-    { label: 'Predict', value: '92%', unit: 'Route B load', note: 'pinch point in 15 min' },
-    { label: 'Measure', value: '−20%', unit: 'crowding', note: '−7% walking time' },
-    { label: 'Find the edge', value: '+40%', unit: 'UV · low-UV cohort', note: '+15% mobility friction' },
-    { label: 'Remember', value: 'Route C', unit: 'next eligible match', note: 'exception applied before ranking' },
+  const [flowStep, setFlowStep] = useState(0)
+  const flow = [
+    { label: 'Tell us', title: 'Low UV · East Richmond', value: 'Need + destination + time', icon: Sun },
+    { label: 'Match', title: '3 routes → 2 eligible', value: 'Capacity + hard requirements', icon: CircleGauge },
+    { label: 'Choose', title: 'Canopy route · 9 min', value: 'Clear trade-offs, your decision', icon: Navigation },
+    { label: 'Learn', title: '“Better” → remembered', value: 'The next similar choice improves', icon: BrainCircuit },
   ]
   useEffect(() => {
-    const timer = window.setInterval(() => setStep((value) => (value + 1) % loop.length), 2600)
+    const timer = window.setInterval(() => setFlowStep((step) => (step + 1) % flow.length), 2600)
     return () => window.clearInterval(timer)
-  }, [loop.length])
+  }, [flow.length])
 
+  const ActiveFlowIcon = flow[flowStep].icon
   return (
-    <main className="landing">
+    <main className="landing landing--clear">
       <header className="landing-nav wrap">
         <Brand />
-        <div className="landing-nav__links">
-          <a href="#mechanism">The mechanism</a>
-          <button className="button button--ink" onClick={() => go(PATHS.product)}>Try the product <ArrowRight size={17} /></button>
-        </div>
+        <nav className="landing-nav__links" aria-label="Landing navigation">
+          <a href="#how">How it works</a>
+          <button className="button button--ink" onClick={() => go(PATHS.product)}>Try it <ArrowRight size={17} /></button>
+        </nav>
       </header>
 
-      <section className="hero wrap">
+      <section className="hero hero--clear wrap">
         <div className="hero__copy">
-          <p className="eyebrow"><span className="live-dot" /> Built for one square kilometre of Cremorne</p>
-          <h1>The capacity is already here. <em>Cremorne just cannot see it together.</em></h1>
-          <p className="hero__lead">Predict the pinch. Use what is already there. Remember what happened.</p>
+          <p className="eyebrow"><span className="live-dot" /> FOR CREMORNE WORKERS + OPERATORS</p>
+          <h1>A better next move through <em>Cremorne.</em></h1>
+          <p className="hero__lead">Find a route or workspace that fits what you need now. Each measured outcome helps Cremorne make the next decision better.</p>
           <div className="hero__actions">
-            <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try Cremorne Memory <ArrowRight size={19} /></button>
-            <a className="text-link" href="#mechanism">Watch it learn <ChevronRight size={16} /></a>
+            <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Plan a journey <ArrowRight size={19} /></button>
+            <a className="text-link" href="#how">See the 4-step flow <ChevronDown size={16} /></a>
           </div>
-          <div className="hero__facts" aria-label="Cremorne facts">
-            <div><strong>700+</strong><span>businesses</span></div>
-            <div><strong>10,000+</strong><span>workers</span></div>
-            <div><strong>&lt;1 km²</strong><span>one shared precinct</span></div>
+          <div className="hero-promise" aria-label="Example product outcome">
+            <span><Sun size={16} /> Low UV</span><ArrowRight size={15} /><strong>Canopy route · 9 min</strong><ArrowRight size={15} /><span><BrainCircuit size={16} /> Learns outcome</span>
           </div>
         </div>
 
-        <div className="hero__visual" aria-label="Illustrated Cremorne capacity problem">
-          <img src="/illustrations/cremorne-hero-unified.png" alt="Hand-drawn Cremorne scene showing a crowded exposed street, a covered route and spare indoor capacity" />
+        <div className="hero__visual" aria-label="Cremorne with overloaded and spare capacity">
+          <img src="/illustrations/cremorne-hero-unified.png" alt="A crowded exposed street beside a shaded passage and an underused meeting room" />
           <div className="hero-note hero-note--crowd">Overloaded now</div>
-          <div className="hero-note hero-note--route">Underused space</div>
-          <div className="hero-note hero-note--room">Shaded capacity</div>
-          <div className="hero-graph"><span>PLACE</span><ArrowRight size={15} /><strong>CAPACITY × TIME × RULES</strong></div>
+          <div className="hero-note hero-note--route">Underused room</div>
+          <div className="hero-note hero-note--room">Shaded route</div>
         </div>
       </section>
 
-      <section className="mechanism-demo" id="mechanism">
-        <div className="wrap mechanism-demo__intro"><p className="eyebrow">THE PART USERS DO NOT HAVE TO THINK ABOUT</p><h2>Every decision leaves the next one smarter.</h2></div>
-        <div className={`memory-machine wrap memory-machine--${step}`}>
-          <div className="loop-switcher" role="tablist" aria-label="Learning loop stage">
-            {loop.map((item, index) => <button key={item.label} className={step === index ? 'is-active' : ''} onClick={() => setStep(index)}><span>{index + 1}</span>{item.label}</button>)}
-          </div>
-          <div className="machine-map">
-            <svg viewBox="0 0 860 460" role="img" aria-label="Animated capacity and Memory mechanism">
-              <path className="machine-grid" d="M30 95H830M30 225H830M30 355H830M170 25V435M395 25V435M635 25V435" />
-              <g className="machine-buildings"><rect x="190" y="118" width="155" height="80"/><rect x="430" y="250" width="165" height="82"/><rect x="655" y="105" width="130" height="95"/></g>
-              <path className="machine-route route-one" d="M75 390 C185 328 244 274 365 236 S602 190 787 62" />
-              <path className="machine-route route-two" d="M75 390 C178 215 302 115 470 128 S655 105 787 62" />
-              <path className="machine-route route-three" d="M75 390 C210 379 345 350 480 295 S662 156 787 62" />
-              <g className="machine-demand">{Array.from({length: 18}).map((_, index) => <circle key={index} cx={90 + index * 35} cy={378 - index * 16 + (index % 3) * 9} r="6" />)}</g>
-              <g className="machine-capacity"><circle cx="315" cy="157" r="30"/><circle cx="515" cy="290" r="30"/><circle cx="720" cy="155" r="30"/></g>
-              <circle className="machine-origin" cx="75" cy="390" r="13"/><circle className="machine-destination" cx="787" cy="62" r="13"/>
-            </svg>
-            <div className="graph-key"><span>movement</span><span>workspace</span><span>time window</span></div>
-          </div>
-          <div className="machine-readout" aria-live="polite">
-            <span>{loop[step].label}</span><strong>{loop[step].value}</strong><b>{loop[step].unit}</b><small>{loop[step].note}</small>
-            <div className="readout-meter"><i style={{width: `${[92, 64, 100, 72][step]}%`}} /></div>
-          </div>
-          <div className="machine-core"><BrainCircuit /><span>CONTEXT</span><i>+</i><span>OUTCOME</span><i>+</i><span>EXCEPTION</span></div>
-        </div>
-        <div className="mechanism-proof wrap"><span><Layers3 /> Capacity Graph</span><span><CircleGauge /> Controlled comparison</span><span><BrainCircuit /> Exception Memory</span><button onClick={() => go(PATHS.product)}>Open the working loop <ArrowRight size={16}/></button></div>
+      <section className="persona-bridge wrap" aria-label="Illustrative user perspective">
+        <div className="persona-bridge__mark"><Sun /></div>
+        <blockquote>“On a high-UV afternoon, the fastest route can be the one I can’t take. Show me a shaded route that still gets me there on time.”</blockquote>
+        <p><strong>Mia</strong><span>Cremorne worker with albinism · illustrative persona</span></p>
       </section>
 
-      <section className="landing-cta"><div className="wrap landing-cta__inner"><div><p className="eyebrow">WORKING PROTOTYPE</p><h2>Use what Cremorne already has.<br />Make the next decision better.</h2></div><button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try the product <ArrowRight size={19} /></button></div></section>
+      <section className="clear-flow" id="how">
+        <div className="wrap clear-flow__intro">
+          <div><p className="eyebrow">ONE CONTINUOUS EXPERIENCE</p><h2>Choose now. Measure what happened. Improve the next choice.</h2></div>
+          <p>The worker completes one task. The learning happens quietly behind it.</p>
+        </div>
+        <div className="wrap flow-player">
+          <div className="flow-player__rail" role="tablist" aria-label="How Cremorne Memory works">
+            {flow.map((item, index) => {
+              const Icon = item.icon
+              return <button key={item.label} className={flowStep === index ? 'is-active' : ''} onClick={() => setFlowStep(index)}><i>{index + 1}</i><span>{item.label}</span><Icon size={18} /></button>
+            })}
+          </div>
+          <div className="flow-player__stage" aria-live="polite">
+            <div className="flow-stage__icon"><ActiveFlowIcon /></div>
+            <span>STEP {flowStep + 1} · {flow[flowStep].label.toUpperCase()}</span>
+            <strong>{flow[flowStep].title}</strong>
+            <small>{flow[flowStep].value}</small>
+            <div className="flow-progress"><i style={{ width: `${(flowStep + 1) * 25}%` }} /></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="audience-value wrap">
+        <article><div><Navigation /><span>FOR WORKERS</span></div><h3>Get one clear next action.</h3><p>A route or room that satisfies today’s requirement, arrival time and available capacity.</p></article>
+        <article><div><FlaskConical /><span>FOR CDH</span></div><h3>Learn which actions hold up.</h3><p>Test an intervention, compare outcomes and save where it works—and where it fails.</p></article>
+      </section>
+
+      <section className="landing-cta"><div className="wrap landing-cta__inner"><div><p className="eyebrow">WORKING PROTOTYPE</p><h2>Start with one real task.</h2><p>No login required.</p></div><button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Open Cremorne Memory <ArrowRight size={19} /></button></div></section>
     </main>
   )
 }
@@ -123,196 +128,170 @@ function useWeather() {
   return weather
 }
 
-function StatusChip({ type, children }: { type: 'live' | 'public' | 'model' | 'gap'; children: React.ReactNode }) {
-  return <span className={`status-chip status-chip--${type}`}>{children}</span>
-}
-
 function ProductApp() {
-  const [view, setView] = useState<AppView>('worker')
+  const [role, setRole] = useState<ProductRole>('worker')
+  const [task, setTask] = useState<WorkerTask>('route')
   const [memory, setMemory] = useState<MemoryRule[]>(() => loadMemory())
   const weather = useWeather()
-  const nav = [
-    { id: 'worker' as const, label: 'Worker map', icon: MapIcon }, { id: 'lab' as const, label: 'Precinct lab', icon: FlaskConical },
-    { id: 'spaces' as const, label: 'Spaces', icon: Building2 }, { id: 'memory' as const, label: 'Memory', icon: BrainCircuit },
-  ]
+  const demoWeather = { temperature: Math.max(31, weather.temperature), uvIndex: Math.max(8.2, weather.uvIndex), source: 'High-UV demo day' }
   return (
-    <div className="app-shell app-shell--tool">
-      <aside className="app-rail">
-        <a className="rail-brand" href={PATHS.landing} aria-label="Cremorne Memory home"><span /><span /><span /></a>
-        <nav aria-label="Product tools">{nav.map(({ id, label, icon: Icon }) => <button key={id} title={label} aria-label={label} className={view === id ? 'is-active' : ''} onClick={() => setView(id)}><Icon size={21} /><span>{label}</span></button>)}</nav>
-        <button className={`rail-memory ${memory.length ? 'is-active' : ''}`} title={`${memory.length} stored rule`} onClick={() => setView('memory')}><BrainCircuit size={20} /><i>{memory.length}</i></button>
-        <a className="rail-home" href={PATHS.landing} title="Product story"><ExternalLink size={18} /></a>
-      </aside>
-      <main className="app-main app-main--canvas">
-        {view === 'worker' && <WorkerView weather={weather} memoryActive={memory.length > 0} onOpenLab={() => setView('lab')} />}
-        {view === 'lab' && <LabView memory={memory} setMemory={setMemory} weather={weather} onOpenMemory={() => setView('memory')} />}
-        {view === 'spaces' && <SpacesView />}
-        {view === 'memory' && <MemoryView memory={memory} onClear={() => { clearMemory(); setMemory([]) }} onOpenLab={() => setView('lab')} />}
-      </main>
-      <nav className="mobile-nav" aria-label="Product mobile navigation">{nav.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'is-active' : ''} onClick={() => setView(id)}><Icon size={20} /><span>{label}</span></button>)}</nav>
+    <div className="product-clear">
+      <header className="product-clear__header">
+        <Brand />
+        <div className="role-switch" role="group" aria-label="Choose product role">
+          <button className={role === 'worker' ? 'is-active' : ''} onClick={() => setRole('worker')}><Users size={16} /> Worker</button>
+          <button className={role === 'operator' ? 'is-active' : ''} onClick={() => setRole('operator')}><FlaskConical size={16} /> CDH operator</button>
+        </div>
+        <div className="product-status"><span className={memory.length ? 'is-on' : ''}><BrainCircuit size={15} />{memory.length ? `${memory.length} local rule active` : 'No rule stored yet'}</span><a href={PATHS.landing}><Home size={17} /><span>Story</span></a></div>
+      </header>
+      {role === 'worker'
+        ? <WorkerExperience task={task} setTask={setTask} weather={demoWeather} memoryActive={memory.length > 0} />
+        : <OperatorExperience weather={demoWeather} memory={memory} setMemory={setMemory} onSeeWorker={() => { setRole('worker'); setTask('route') }} />}
     </div>
   )
 }
 
-function WorkerView({ weather, memoryActive, onOpenLab }: { weather: { temperature: number; uvIndex: number }; memoryActive: boolean; onOpenLab: () => void }) {
+function WorkerExperience({ task, setTask, weather, memoryActive }: {
+  task: WorkerTask
+  setTask: (task: WorkerTask) => void
+  weather: { temperature: number; uvIndex: number; source: string }
+  memoryActive: boolean
+}) {
+  return (
+    <main className="worker-clear">
+      <header className="task-switcher">
+        <div><span>What do you need?</span><strong>{task === 'route' ? 'Get somewhere' : 'Find a workspace'}</strong></div>
+        <div role="group" aria-label="Choose worker task"><button className={task === 'route' ? 'is-active' : ''} onClick={() => setTask('route')}><MapIcon size={17} /> Plan a route</button><button className={task === 'space' ? 'is-active' : ''} onClick={() => setTask('space')}><Building2 size={17} /> Find a room</button></div>
+        <div className="live-context"><b>DEMO DAY</b><span><ThermometerSun size={15} />{weather.temperature.toFixed(0)}°</span><span><Sun size={15} />UV {weather.uvIndex.toFixed(1)}</span></div>
+      </header>
+      {task === 'route' ? <RouteJourney weather={weather} memoryActive={memoryActive} /> : <SpaceJourney />}
+    </main>
+  )
+}
+
+function JourneyProgress({ stage }: { stage: JourneyStage }) {
+  const current = stage === 'setup' ? 0 : stage === 'results' ? 1 : 2
+  return <div className="journey-progress" aria-label="Journey progress">{['Your need', 'Choose', 'Complete'].map((label, index) => <div key={label} className={current >= index ? 'is-on' : ''}><i>{current > index ? <Check size={11} /> : index + 1}</i><span>{label}</span></div>)}</div>
+}
+
+function RouteJourney({ weather, memoryActive }: { weather: { uvIndex: number }; memoryActive: boolean }) {
+  const [stage, setStage] = useState<JourneyStage>('setup')
   const [destination, setDestination] = useState<DestinationId>('east-richmond')
   const [need, setNeed] = useState<ProductNeed>('lower-uv')
   const [departure, setDeparture] = useState('16:10')
-  const [showTrees, setShowTrees] = useState(true)
+  const [selectedId, setSelectedId] = useState<string>()
+  const [progress, setProgress] = useState(16)
+  const [feedback, setFeedback] = useState<'better' | 'same' | 'worse'>()
   const workers = demandAtTime(destination, departure)
   const routes = useMemo(() => evaluateProductRoutes({ destination, need, uvIndex: weather.uvIndex, workers, memoryActive }), [destination, need, weather.uvIndex, workers, memoryActive])
-  const [selectedId, setSelectedId] = useState<string>()
-  const selected = routes.find((route) => route.id === selectedId) ?? routes[0]
+  const selected = routes.find((route) => route.id === selectedId && route.eligible) ?? routes.find((route) => route.eligible) ?? routes[0]
   const noEligible = routes.every((route) => !route.eligible)
-  const station = productContext.places[destination]
-  return (
-    <section className="worker-canvas">
-      <div className="map-stage map-stage--fullscreen">
-        <CremorneMap routes={routes} selectedId={selected?.id} onSelect={setSelectedId} showTrees={showTrees} />
-        <div className="map-live-pills">
-          <span><ThermometerSun size={15} />{weather.temperature.toFixed(0)}°</span>
-          <span><Sun size={15} />UV {weather.uvIndex.toFixed(1)}</span>
-          <span><Users size={15} />{station.pmPeakEntries?.toLocaleString()} PM peak</span>
-        </div>
-        <div className="map-layer-control"><button className={showTrees ? 'is-on' : ''} onClick={() => setShowTrees((value) => !value)}><Trees size={17} /></button><small>Vicmap trees</small></div>
-        <div className="map-source">OSM routes · Vicmap trees · DTP patronage</div>
-      </div>
 
-      <aside className="journey-sheet">
-        <div className="journey-sheet__head"><span>Journey</span><button onClick={onOpenLab}><FlaskConical size={16} /> Test</button></div>
-        <div className="journey-pair"><strong>CDH</strong><ArrowRight size={16} /><select aria-label="Destination" value={destination} onChange={(event) => setDestination(event.target.value as DestinationId)}><option value="east-richmond">East Richmond</option><option value="richmond">Richmond</option></select><input aria-label="Departure time" type="time" value={departure} onChange={(event) => setDeparture(event.target.value)} /></div>
-        <div className="need-selector" role="group" aria-label="Route need">
-          <button className={need === 'lower-uv' ? 'is-selected' : ''} onClick={() => setNeed('lower-uv')}><Sun size={18} /><span>Low UV</span></button>
-          <button className={need === 'fastest' ? 'is-selected' : ''} onClick={() => setNeed('fastest')}><Route size={18} /><span>Fast</span></button>
-          <button className={need === 'step-free' ? 'is-selected' : ''} onClick={() => setNeed('step-free')}><ShieldAlert size={18} /><span>Step-free</span></button>
-        </div>
-        {noEligible ? <div className="coverage-gap compact" role="alert"><ShieldAlert /><div><strong>Route evidence incomplete</strong><span>Step-free recommendation paused</span></div></div> : <div className="route-list route-list--compact" aria-live="polite">{routes.map((route) => (
-          <button key={route.id} className={`route-option ${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`} onClick={() => setSelectedId(route.id)}>
-            <i className="route-swatch" /><div><strong>{route.name}</strong><span>{route.canopyAdjacentPct}% shade · {Math.max(0, route.remainingCapacity)} open</span></div><b>{route.eligible ? `${route.durationMin}m` : <X size={15} />}</b>
-          </button>
-        ))}</div>}
-      </aside>
-
-      <aside className={`route-sheet ${noEligible ? 'route-sheet--gap' : ''}`}>
-        {noEligible ? <><ShieldAlert /><strong>Cannot verify this journey yet.</strong><span>Kerb, gradient and crossing data required.</span></> : <>
-          <div className="route-sheet__top"><span>{selected.recommended ? 'BEST FIT' : 'ROUTE'}</span>{memoryActive && <BrainCircuit size={18} />}</div>
-          <h2>{selected.name}</h2>
-          <div className="route-sheet__metrics"><div><strong>{selected.durationMin}</strong><span>min</span></div><div><strong>{selected.exposureIndex}</strong><span>UV load</span></div><div><strong>{Math.max(0, selected.remainingCapacity)}</strong><span>open</span></div></div>
-          <div className="capacity-meter"><i style={{ width: `${Math.min(100, selected.predictedLoad / selected.capacity * 100)}%` }} /></div>
-          <button className="start-route">Use this route <ArrowRight size={17} /></button>
-          <details><summary>Evidence</summary><ul>{selected.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul><small>Public geometry + modelled arrival state</small></details>
-        </>}
-      </aside>
-    </section>
-  )
-}
-
-function LoadBar({ label, values }: { label: string; values: [number, number, number] }) {
-  const total = values.reduce((sum, value) => sum + value, 0)
-  return <div className="load-bar"><div><span>{label}</span><strong>{total} workers</strong></div><div className="load-bar__track" aria-label={`${label} route distribution`}><i className="route-a" style={{ width: `${values[0] / total * 100}%` }}>A {values[0]}</i><i className="route-b" style={{ width: `${values[1] / total * 100}%` }}>B {values[1]}</i><i className="route-c" style={{ width: `${values[2] / total * 100}%` }}>C {values[2]}</i></div></div>
-}
-
-function LabView({ memory, setMemory, weather, onOpenMemory }: { memory: MemoryRule[]; setMemory: (rules: MemoryRule[]) => void; weather: { uvIndex: number }; onOpenMemory: () => void }) {
-  const [workers, setWorkers] = useState(300)
-  const [uv, setUv] = useState(Math.max(8.2, weather.uvIndex))
-  const [phase, setPhase] = useState<LabPhase>(memory.length ? 'stored' : 'ready')
-  const [apiStatus, setApiStatus] = useState<'idle' | 'connected' | 'local'>('idle')
-  const simulation = simulateScenario(workers, 42)
-  const baseline: [number, number, number] = [simulation.routeLoads.A, simulation.routeLoads.B, simulation.routeLoads.C]
-  const memoryAware: [number, number, number] = [Math.round(workers * 0.3), Math.round(workers * 0.36), workers - Math.round(workers * 0.3) - Math.round(workers * 0.36)]
   useEffect(() => {
-    if (phase === 'ready' || phase === 'replayed') return
-    const next: LabPhase = phase === 'running' ? 'measured' : phase === 'measured' ? 'stored' : 'replayed'
-    const timer = window.setTimeout(() => {
-      if (next === 'stored') setMemory(saveRule(FIRST_EXCEPTION))
-      setPhase(next)
-    }, phase === 'running' ? 900 : phase === 'measured' ? 1200 : 1300)
-    return () => window.clearTimeout(timer)
-  }, [phase, setMemory])
-  async function runExperiment() {
-    setPhase('running')
-    try { const response = await fetch(`/api/decision?need=standard&uv=${uv}&workers=${workers}`); if (!response.ok || !response.headers.get('content-type')?.includes('json')) throw new Error(); await response.json(); setApiStatus('connected') } catch { setApiStatus('local') }
-  }
+    if (stage !== 'active') return
+    const timer = window.setInterval(() => setProgress((value) => Math.min(88, value + 7)), 700)
+    return () => window.clearInterval(timer)
+  }, [stage])
+
+  const resetForInput = () => { setStage('setup'); setSelectedId(undefined); setProgress(16); setFeedback(undefined) }
+  const findRoutes = () => { setSelectedId(routes.find((route) => route.eligible)?.id); setStage('results') }
+
   return (
-    <section className={`lab-console phase-${phase}`}>
-      <header className="console-toolbar">
-        <div className="console-title"><FlaskConical /><span><strong>Precinct Lab</strong><small>Church Street · controlled run</small></span></div>
-        <label><span>Workers</span><input type="range" min="100" max="500" step="20" value={workers} onChange={(event) => setWorkers(Number(event.target.value))} /><strong>{workers}</strong></label>
-        <label><span>UV</span><input type="range" min="3" max="12" step="0.1" value={uv} onChange={(event) => setUv(Number(event.target.value))} /><strong>{uv.toFixed(1)}</strong></label>
-        <button className="run-loop" onClick={runExperiment}>{phase === 'running' || phase === 'measured' || phase === 'stored' ? <Activity size={17} /> : <Play size={17} />} {phase === 'replayed' ? 'Run again' : phase === 'ready' ? 'Run full loop' : 'Running…'}</button>
-      </header>
-      <div className="lab-grid">
-        <div className="experiment-stage">
-          <div className="experiment-map">
-            <svg viewBox="0 0 780 340" role="img" aria-label="Synthetic route allocation experiment">
-              <path className="lab-road" d="M80 285 C210 230 275 195 395 168 S590 130 710 60" /><path className="lab-road lab-road--alt" d="M80 285 C205 170 300 110 420 120 S590 108 710 60" /><path className="lab-road lab-road--access" d="M80 285 C210 278 310 255 420 225 S610 155 710 60" />
-              <g className="lab-buildings"><rect x="160" y="245" width="80" height="55" /><rect x="300" y="140" width="95" height="65" /><rect x="485" y="65" width="90" height="70" /></g>
-              <g className="lab-people">{Array.from({ length: 30 }).map((_, index) => <circle style={{ animationDelay: `${index * -0.08}s` }} key={index} cx={90 + index * 18} cy={276 - index * 6.2 + (index % 3) * 8} r="4" />)}</g>
-              <circle className="lab-sun" cx="675" cy="42" r="22" /><text x="640" y="92">UV {uv.toFixed(1)}</text><text x="82" y="320">CDH / Church St</text><text x="500" y="316">Same demand · same seed · same conditions</text>
-            </svg>
-            <div className="experiment-stage__status"><span className={phase === 'running' ? 'is-active' : phase !== 'ready' ? 'is-done' : ''}>Run</span><ChevronRight /><span className={phase === 'measured' ? 'is-active' : phase === 'stored' || phase === 'replayed' ? 'is-done' : ''}>Measure</span><ChevronRight /><span className={phase === 'stored' ? 'is-active' : phase === 'replayed' ? 'is-done' : ''}>Remember</span><ChevronRight /><span className={phase === 'replayed' ? 'is-active' : ''}>Replay</span></div>
-          </div>
-          <div className="comparison">
-            <article><header><div><span>FIRST PASS</span><h2>Average</h2></div><StatusChip type="model">BASELINE</StatusChip></header><LoadBar label="Route load" values={baseline} /><div className="metric-pair"><div className="positive"><strong>−20%</strong><span>crowding</span></div><div className="positive"><strong>−7%</strong><span>time</span></div></div><div className={`hidden-cost ${phase === 'ready' || phase === 'running' ? 'is-covered' : ''}`}><div><Sun /><strong>+40%</strong><span>UV · low-UV</span></div><div><Route /><strong>+15%</strong><span>mobility friction</span></div>{(phase === 'ready' || phase === 'running') && <button onClick={runExperiment}>{phase === 'running' ? 'Measuring…' : 'Reveal distribution'}</button>}</div></article>
-            <article className="comparison__memory"><header><div><span>NEXT PASS</span><h2>Memory-aware</h2></div><StatusChip type={memory.length ? 'live' : 'model'}>{memory.length ? 'ACTIVE' : 'WAITING'}</StatusChip></header><LoadBar label="Route load" values={memoryAware} /><div className="metric-pair"><div className="positive"><strong>−16%</strong><span>crowding</span></div><div className="positive"><strong>−5%</strong><span>time</span></div></div><div className="guardrail-result"><Check /><div><strong>Guardrail passes</strong><span>low-UV + mobility</span></div></div>{phase === 'replayed' && <div className="replay-payoff"><BrainCircuit /><div><span>EXCEPTION RETRIEVED</span><strong>Next decision changed.</strong></div></div>}</article>
-          </div>
-          <p className="lab-caption">Synthetic MVP output. The comparison holds demand, conditions and random seed constant.</p>
-        </div>
-        <aside className="backend-trace">
-          <div className="backend-trace__head"><div><ServerCog /><span><strong>Decision trace</strong><small>{apiStatus === 'connected' ? 'Serverless API connected' : apiStatus === 'local' ? 'Local engine fallback' : 'Ready to run'}</small></span></div><span className={`api-light ${apiStatus !== 'idle' ? 'is-on' : ''}`} /></div>
-          <div className="trace-flow"><div className={phase !== 'ready' ? 'is-active' : ''}><Activity /><span><strong>OBSERVE</strong><small>{workers} workers · UV {uv.toFixed(1)}</small></span></div><i /><div className={phase !== 'ready' ? 'is-active' : ''}><CircleGauge /><span><strong>PREDICT</strong><small>load at time of use</small></span></div><i /><div className={phase !== 'ready' ? 'is-active' : ''}><Layers3 /><span><strong>MATCH</strong><small>capacity + constraints</small></span></div><i /><div className={phase !== 'ready' ? 'is-active' : ''}><Activity /><span><strong>MEASURE</strong><small>aggregate + cohort effect</small></span></div><i /><div className={memory.length ? 'is-active' : ''}><BrainCircuit /><span><strong>REMEMBER</strong><small>exception + boundary</small></span></div></div>
-          <details className="payload-card"><summary>Inspect Memory write</summary><code>{`context: high UV + congestion\nintervention: Route B\noutcome: crowding −20%\nexception: low-UV exposure +40%\nboundary: UV ≥ 7\nconfidence: 0.82`}</code></details>
-          <div className="backend-actions"><button onClick={onOpenMemory} disabled={!memory.length}>Inspect stored rule <ArrowRight size={15} /></button><a href="/api/decision?need=low-uv&memory=1" target="_blank" rel="noreferrer">Open API JSON <ExternalLink size={14} /></a></div>
-        </aside>
+    <section className="route-experience">
+      <aside className="journey-panel">
+        <JourneyProgress stage={stage} />
+        {stage === 'setup' && <div className="journey-step">
+          <span className="step-kicker">STEP 1 OF 3</span><h1>What matters for this trip?</h1><p>We will only show options that fit your requirement at the time you arrive.</p>
+          <div className="journey-fields"><label><span>From</span><strong>CDH · 80 Balmain St</strong></label><label><span>To</span><select value={destination} onChange={(event) => { setDestination(event.target.value as DestinationId); resetForInput() }}><option value="east-richmond">East Richmond Station</option><option value="richmond">Richmond Station</option></select></label><label><span>Leave at</span><input type="time" value={departure} onChange={(event) => { setDeparture(event.target.value); resetForInput() }} /></label></div>
+          <span className="field-title">Your requirement</span><div className="need-cards"><button className={need === 'lower-uv' ? 'is-active' : ''} onClick={() => { setNeed('lower-uv'); resetForInput() }}><Sun /><strong>Low UV</strong><span>Reduce direct exposure</span></button><button className={need === 'fastest' ? 'is-active' : ''} onClick={() => { setNeed('fastest'); resetForInput() }}><Route /><strong>Fastest</strong><span>Minimise travel time</span></button><button className={need === 'step-free' ? 'is-active' : ''} onClick={() => { setNeed('step-free'); resetForInput() }}><ShieldAlert /><strong>Step-free</strong><span>Verified access only</span></button></div>
+          <button className="primary-action" onClick={findRoutes}>Find eligible routes <ArrowRight size={18} /></button>
+          <small className="input-note"><Sparkles size={13} /> Forecast + arrival capacity + your requirement</small>
+        </div>}
+
+        {stage === 'results' && <div className="journey-step">
+          <button className="back-action" onClick={() => setStage('setup')}><ArrowLeft size={15} /> Change trip</button><span className="step-kicker">STEP 2 OF 3</span><h1>{noEligible ? 'We need better evidence.' : 'Choose your route.'}</h1><p>{noEligible ? 'We will not claim a verified step-free route until kerb, crossing and gradient data is complete.' : `${routes.filter((route) => route.eligible).length} options fit this journey. Recommended does not mean required.`}</p>
+          {noEligible ? <div className="honest-gap"><ShieldAlert /><div><strong>No verified match</strong><span>Accessibility evidence gap flagged for CDH.</span></div></div> : <div className="choice-list">{routes.map((route) => <button key={route.id} disabled={!route.eligible} onClick={() => setSelectedId(route.id)} className={`${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`}><i /><div><span>{route.recommended ? 'BEST FIT' : route.eligible ? 'ALTERNATIVE' : 'NOT ELIGIBLE'}</span><strong>{route.name}</strong><small>{route.durationMin} min · UV load {route.exposureIndex} · {Math.max(0, route.remainingCapacity)} places open</small></div>{selected.id === route.id && <Check size={17} />}</button>)}</div>}
+          {!noEligible && <><details className="inline-evidence"><summary>Why this route? <ChevronDown size={15} /></summary><ul>{selected.reasons.map((reason) => <li key={reason}><Check size={13} />{reason}</li>)}</ul><small>Public geometry + forecast + modelled arrival demand</small></details><button className="primary-action" onClick={() => setStage('active')}>Start {selected.name} <Navigation size={18} /></button></>}
+        </div>}
+
+        {stage === 'active' && <div className="journey-step active-journey">
+          <span className="step-kicker live"><i /> ROUTE ACTIVE</span><h1>{selected.name}</h1><p>Follow the highlighted route. We are monitoring the arrival state, not your identity.</p><div className="active-time"><strong>{Math.max(1, Math.ceil(selected.durationMin * (100 - progress) / 100))}</strong><span>minutes remaining</span></div><div className="trip-progress"><i style={{ width: `${progress}%` }} /></div><div className="next-turn"><Navigation /><div><span>NEXT</span><strong>Continue along Balmain Street</strong><small>towards the shaded passage</small></div></div><button className="primary-action" onClick={() => setStage('feedback')}>I’ve arrived <Check size={18} /></button>
+        </div>}
+
+        {stage === 'feedback' && <div className="journey-step arrival-card">
+          <div className="arrival-icon"><Check /></div><span className="step-kicker">JOURNEY COMPLETE</span><h1>Was this better?</h1><p>Your answer improves similar recommendations. It does not require a diagnosis or identity record.</p><div className="arrival-metrics"><div><strong>{selected.durationMin}</strong><span>minutes</span></div><div><strong>{selected.exposureIndex}</strong><span>UV load</span></div><div><strong>{Math.max(0, selected.remainingCapacity)}</strong><span>spare capacity</span></div></div><div className="feedback-row">{(['better', 'same', 'worse'] as const).map((value) => <button key={value} className={feedback === value ? 'is-active' : ''} onClick={() => { setFeedback(value); setStage('saved') }}>{value === 'better' ? 'Better' : value === 'same' ? 'Same' : 'Worse'}</button>)}</div>
+        </div>}
+
+        {stage === 'saved' && <div className="journey-step saved-card">
+          <div className="arrival-icon"><BrainCircuit /></div><span className="step-kicker">SAVED ON THIS DEVICE</span><h1>The next similar choice starts smarter.</h1><p>Personal preference: <strong>{feedback}</strong>. Precinct-wide rules are only created after CDH validates outcomes across users.</p><div className="saved-rule"><Sun /><span>Low-UV journey</span><ArrowRight /><strong>{selected.name}</strong></div><button className="primary-action" onClick={() => { setStage('setup'); setProgress(16); setFeedback(undefined) }}>Plan another journey <ArrowRight size={18} /></button>
+        </div>}
+      </aside>
+
+      <div className="journey-map">
+        <CremorneMap routes={routes} selectedId={selected?.id} onSelect={(id) => { setSelectedId(id); if (stage === 'setup') setStage('results') }} showTrees />
+        <div className="map-context"><span><Trees size={15} /> canopy</span><span><Users size={15} /> {workers} expected</span>{memoryActive && <span className="memory-on"><BrainCircuit size={15} /> local rule applied</span>}</div>
+        {stage === 'active' && <div className="map-active-banner"><Navigation size={16} /><span>{progress}% complete</span></div>}
       </div>
     </section>
   )
 }
 
-function SpacesView() {
-  const [people, setPeople] = useState(6), [hybrid, setHybrid] = useState(true), [accessible, setAccessible] = useState(true)
+function SpaceJourney() {
+  const [people, setPeople] = useState(6)
+  const [hybrid, setHybrid] = useState(true)
+  const [accessible, setAccessible] = useState(true)
   const [selectedId, setSelectedId] = useState('boardroom')
   const [held, setHeld] = useState(false)
   const results = useMemo(() => findSpaces({ people, requireHybrid: hybrid, requireAccessible: accessible }), [people, hybrid, accessible])
   const selected = results.find((space) => space.id === selectedId) ?? results[0]
   const chooseSpace = (id: string) => { setSelectedId(id); setHeld(false) }
-  return <section className="spaces-tool">
-    <header className="console-toolbar space-toolbar">
-      <div className="console-title"><Building2 /><span><strong>Space finder</strong><small>CDH participating capacity</small></span></div>
-      <label><span>People</span><input aria-label="People" type="range" min="2" max="80" value={people} onChange={(event) => { setPeople(Number(event.target.value)); setHeld(false) }}/><strong>{people}</strong></label>
-      <button className={hybrid ? 'filter-toggle is-on' : 'filter-toggle'} onClick={() => { setHybrid((value) => !value); setHeld(false) }}>Hybrid</button>
-      <button className={accessible ? 'filter-toggle is-on' : 'filter-toggle'} onClick={() => { setAccessible((value) => !value); setHeld(false) }}>Accessible</button>
-    </header>
-    <div className="spaces-tool__layout">
-      <aside className="space-results"><div className="space-results__head"><strong>{results.filter((space) => space.eligible).length} match</strong><span>14:00–15:00</span></div>{results.map((space) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={`${selected.id === space.id ? 'is-selected' : ''} ${space.eligible ? 'is-eligible' : 'is-blocked'}`}><i/><div><strong>{space.name.replace('CDH ', '')}</strong><span>{space.capacity} seats · {space.mode}</span></div>{space.eligible ? <Check size={16}/> : <X size={16}/>}</button>)}</aside>
-      <main className="space-plan" aria-label="Interactive CDH space plan">
-        <div className="plan-corridor"><span>LEVEL 1</span></div>
-        {results.map((space, index) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={`plan-room plan-room--${index + 1} ${selected.id === space.id ? 'is-selected' : ''} ${space.eligible ? 'is-eligible' : 'is-blocked'}`}><Building2/><strong>{space.name.replace('CDH ', '')}</strong><span>{space.capacity}</span></button>)}
-        <div className="space-timeline"><span>13:00</span><i/><span>14:00</span><b/><span>15:00</span><i/><span>16:00</span></div>
-      </main>
-      <aside className="space-inspector"><span className="mini-label">{selected.eligible ? 'ELIGIBLE SPACE' : 'FILTERED'}</span><h2>{selected.name}</h2><div className="space-inspector__number"><strong>{selected.capacity}</strong><span>seats</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selected.eligible ? <><div className="available-window"><span>OPEN WINDOW</span><strong>{selected.availability[0]}</strong></div><button className={held ? 'start-route is-held' : 'start-route'} onClick={() => setHeld(true)}>{held ? <><Check size={17}/> Demo slot held</> : <>Hold this slot <ArrowRight size={17}/></>}</button></> : <ul className="space-blockers">{selected.blockers.map((blocker) => <li key={blocker}><X size={14}/>{blocker}</li>)}</ul>}<details><summary>Shared data</summary><small>Capacity, capability and bounded availability only.</small></details></aside>
-    </div>
-  </section>
+  return (
+    <section className="space-experience">
+      <aside className="space-search"><span className="step-kicker">WORKSPACE CAPACITY</span><h1>Find a room you can actually use.</h1><p>Searches opted-in capacity only. Private calendars and meeting details stay private.</p><label><span>People</span><div><input type="range" min="2" max="80" value={people} onChange={(event) => { setPeople(Number(event.target.value)); setHeld(false) }} /><strong>{people}</strong></div></label><div className="space-toggles"><button className={hybrid ? 'is-active' : ''} onClick={() => { setHybrid((value) => !value); setHeld(false) }}><Check /> Hybrid equipped</button><button className={accessible ? 'is-active' : ''} onClick={() => { setAccessible((value) => !value); setHeld(false) }}><Check /> Accessible</button></div><div className="space-match-count"><strong>{results.filter((space) => space.eligible).length}</strong><span>eligible now</span></div><div className="choice-list space-choice-list">{results.map((space) => <button key={space.id} disabled={!space.eligible} onClick={() => chooseSpace(space.id)} className={`${selected.id === space.id ? 'is-selected' : ''} ${!space.eligible ? 'is-blocked' : ''}`}><i/><div><span>{space.eligible ? 'AVAILABLE' : 'FILTERED'}</span><strong>{space.name.replace('CDH ', '')}</strong><small>{space.capacity} people · {space.availability[0] ?? space.blockers[0]}</small></div>{space.eligible ? <Check size={16}/> : <X size={16}/>}</button>)}</div></aside>
+      <div className="space-canvas"><div className="space-floor-label">CDH · LEVEL 1</div>{results.map((space, index) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={`room-shape room-${index + 1} ${selected.id === space.id ? 'is-selected' : ''} ${space.eligible ? 'is-eligible' : 'is-blocked'}`}><Building2 /><strong>{space.name.replace('CDH ', '')}</strong><span>{space.capacity}</span></button>)}<div className="floor-corridor">SHARED CORRIDOR</div></div>
+      <aside className="space-confirm"><span className="step-kicker">{selected.eligible ? 'ELIGIBLE SPACE' : 'NOT A MATCH'}</span><h2>{selected.name}</h2><div className="capacity-number"><strong>{selected.capacity}</strong><span>people</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selected.eligible ? <><div className="booking-time"><Clock3 /><span><small>AVAILABLE</small><strong>{selected.availability[0]}</strong></span></div><button className={`primary-action ${held ? 'is-confirmed' : ''}`} onClick={() => setHeld(true)}>{held ? <><Check /> Slot held for this demo</> : <>Hold this slot <ArrowRight size={18} /></>}</button></> : <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by your requirements</strong><span>{selected.blockers.join(' · ')}</span></div></div>}<details className="inline-evidence"><summary>What the host shares <ChevronDown size={15}/></summary><p>Availability, capacity, facilities, access class and optional price—no meeting titles or attendees.</p></details></aside>
+    </section>
+  )
 }
 
-function MemoryView({ memory, onClear, onOpenLab }: { memory: MemoryRule[]; onClear: () => void; onOpenLab: () => void }) {
-  const rule = memory[0]
-  return <section className="memory-tool">
-    <header className="console-toolbar memory-toolbar"><div className="console-title"><BrainCircuit/><span><strong>Operational Memory</strong><small>{memory.length} active rule{memory.length === 1 ? '' : 's'}</small></span></div><div className="memory-toolbar__chips"><span>context</span><span>outcome</span><span>exception</span><span>boundary</span></div>{memory.length > 0 && <button className="filter-toggle" onClick={onClear}><RotateCcw size={15}/>Reset</button>}</header>
-    {memory.length === 0 ? <div className="empty-memory"><div className="empty-memory__orb"><BrainCircuit /></div><h2>Memory is empty</h2><button className="button button--accent" onClick={onOpenLab}>Run the first loop <ArrowRight size={17} /></button></div> : <div className="memory-tool__layout">
-      <main className="memory-canvas" aria-label="Context and exception knowledge graph">
-        <svg viewBox="0 0 900 540" aria-hidden="true"><path d="M130 270 C230 150 295 150 390 240"/><path d="M130 270 C235 375 300 390 405 310"/><path d="M405 275 C520 275 560 180 665 155"/><path d="M405 275 C530 285 565 390 680 385"/><path d="M685 155 C765 215 765 315 690 385"/></svg>
-        <div className="memory-node node-context"><small>CONTEXT</small><strong>UV ≥ {rule.context.uvMin}</strong><span>Church St</span></div>
-        <div className="memory-node node-intervention"><small>ACTION</small><strong>Route B</strong><span>redistribute</span></div>
-        <div className="memory-node node-outcome"><small>OUTCOME</small><strong>−20%</strong><span>crowding</span></div>
-        <div className="memory-node node-exception"><small>EXCEPTION</small><strong>+40%</strong><span>low-UV exposure</span></div>
-        <div className="memory-node node-boundary"><small>BOUNDARY</small><strong>UV ≥ 7</strong><span>filter for low UV</span></div>
-        <div className="memory-core-node"><BrainCircuit/><span>CREMORNE<br/>MEMORY</span></div>
-      </main>
-      <aside className="memory-inspector"><span className="mini-label">ACTIVE RULE</span><h2>High UV × low-UV need</h2><div className="confidence-ring" style={{'--confidence': `${rule.confidence * 100}%`} as React.CSSProperties}><strong>{(rule.confidence * 100).toFixed(0)}%</strong><span>confidence</span></div><div className="rule-effect"><X/><span>Route B</span><ArrowRight/><Check/><strong>Route C</strong></div><button className="start-route" onClick={onOpenLab}>Replay evidence <RotateCcw size={16}/></button><details><summary>Evidence sources</summary>{productContext.sources.map((source)=><a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.label}<ExternalLink size={12}/></a>)}</details></aside>
-    </div>}
-    <div className="privacy-dock"><span>constraints ≠ diagnoses</span><span>capacity ≠ calendars</span><span>outcomes ≠ identities</span></div>
-  </section>
+function OperatorProgress({ stage }: { stage: OperatorStage }) {
+  const current = stage === 'detect' ? 0 : stage === 'testing' ? 1 : stage === 'compare' ? 2 : 3
+  return <div className="operator-progress">{['Detect', 'Test', 'Compare', 'Save rule'].map((label, index) => <div key={label} className={current >= index ? 'is-on' : ''}><i>{current > index ? <Check size={11}/> : index + 1}</i><span>{label}</span></div>)}</div>
 }
 
-export default function App() { return window.location.pathname.startsWith(PATHS.product) ? <ProductApp /> : <Landing /> }
+function OperatorExperience({ weather, memory, setMemory, onSeeWorker }: {
+  weather: { uvIndex: number }
+  memory: MemoryRule[]
+  setMemory: (memory: MemoryRule[]) => void
+  onSeeWorker: () => void
+}) {
+  const [stage, setStage] = useState<OperatorStage>(memory.length ? 'saved' : 'detect')
+  const [technicalOpen, setTechnicalOpen] = useState(false)
+  const runTest = () => { setStage('testing'); window.setTimeout(() => setStage('compare'), 1300) }
+  const storeRule = () => { setMemory(saveRule(FIRST_EXCEPTION)); setStage('saved') }
+  return (
+    <main className="operator-clear">
+      <header className="operator-heading"><div><span className="step-kicker">CDH OPERATIONS</span><h1>Test one decision before it reaches the precinct.</h1></div><OperatorProgress stage={stage} /></header>
+      <section className="operator-workbench">
+        <div className={`operator-scene stage-${stage}`}>
+          <div className="scene-top"><span><Activity size={15}/> Church Street</span><span><Sun size={15}/> UV {Math.max(8.2, weather.uvIndex).toFixed(1)}</span><span><Users size={15}/> 300 workers</span></div>
+          <svg viewBox="0 0 780 420" role="img" aria-label="Intervention comparison across three routes"><path className="op-road road-a" d="M70 350 C220 270 310 225 430 195 S620 135 710 62"/><path className="op-road road-b" d="M70 350 C205 175 335 100 485 125 S620 108 710 62"/><path className="op-road road-c" d="M70 350 C220 360 350 330 470 270 S635 150 710 62"/><g className="op-blocks"><rect x="190" y="280" width="95" height="67"/><rect x="360" y="155" width="105" height="72"/><rect x="545" y="75" width="92" height="70"/></g><g className="op-crowd">{Array.from({ length: 28 }).map((_, index) => <circle key={index} cx={95 + index * 18} cy={336 - index * 7 + (index % 3) * 8} r="5"/>)}</g><circle className="op-origin" cx="70" cy="350" r="13"/><circle className="op-target" cx="710" cy="62" r="13"/></svg>
+          <div className="scene-legend"><span><i className="a"/>Accessible A</span><span><i className="b"/>Direct B</span><span><i className="c"/>Shadow C</span></div>
+        </div>
+        <aside className="operator-decision">
+          {stage === 'detect' && <><span className="step-kicker">1 · DETECTED</span><h2>Church Street reaches 92% load in 15 minutes.</h2><p>Question: can demand be redistributed without making another worker’s journey worse?</p><div className="operator-signal"><strong>92%</strong><span>predicted route load</span></div><button className="primary-action" onClick={runTest}>Test redistribution <Play size={18}/></button></>}
+          {stage === 'testing' && <div className="testing-state"><div className="testing-orb"><Activity/></div><span>RUNNING CONTROLLED TEST</span><h2>Same demand. Same UV. Same seed.</h2><p>Only the decision logic changes.</p></div>}
+          {stage === 'compare' && <><span className="step-kicker">3 · COMPARE</span><h2>The average improved. One group did not.</h2><div className="result-pair"><div><span>CROWDING</span><strong>−20%</strong><small>better</small></div><div><span>WALK TIME</span><strong>−7%</strong><small>better</small></div></div><div className="exception-found"><ShieldAlert/><div><span>EXCEPTION FOUND</span><strong>Low-UV exposure +40%</strong><small>Route B cannot be reused universally.</small></div></div><button className="primary-action" onClick={storeRule}>Adapt and save rule <BrainCircuit size={18}/></button></>}
+          {stage === 'saved' && <><div className="saved-badge"><BrainCircuit/></div><span className="step-kicker">4 · RULE READY</span><h2>Next high-UV day starts with the exception.</h2><div className="operator-rule"><span>WHEN</span><strong>UV ≥ 7 + low-UV requirement</strong><span>THEN</span><strong>Filter Route B before ranking</strong></div><button className="primary-action" onClick={onSeeWorker}>See the worker result <ArrowRight size={18}/></button><button className="secondary-action" onClick={() => setStage('detect')}>Replay from detection</button></>}
+          <button className="technical-toggle" onClick={() => setTechnicalOpen((open) => !open)}><CircleGauge size={15}/>{technicalOpen ? 'Hide' : 'Show'} decision trace <ChevronDown size={14}/></button>
+        </aside>
+      </section>
+      {technicalOpen && <section className="technical-drawer"><div><strong>OBSERVE</strong><span>public + forecast inputs</span></div><ArrowRight/><div><strong>PREDICT</strong><span>arrival-state load</span></div><ArrowRight/><div><strong>MATCH</strong><span>capacity + constraints</span></div><ArrowRight/><div><strong>MEASURE</strong><span>average + cohort effects</span></div><ArrowRight/><div><strong>REMEMBER</strong><span>exception + boundary</span></div><a href="/api/decision?need=low-uv&memory=1" target="_blank" rel="noreferrer">API JSON <ExternalLink size={13}/></a></section>}
+      <p className="synthetic-footnote">Synthetic MVP experiment. Reported effects demonstrate the measurement workflow and are not field-validated claims.</p>
+    </main>
+  )
+}
+
+export default function App() {
+  return window.location.pathname.startsWith(PATHS.product) ? <ProductApp /> : <Landing />
+}
