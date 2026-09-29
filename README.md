@@ -9,8 +9,8 @@ Cremorne Memory turns fragmented precinct signals into guided actions. A worker 
 - `/` — concise product landing page that explains one outcome and one four-step flow
 - `/app` — one product with a judge-first entry flow and two working surfaces:
   - **Live demo:** a 30-second, four-step proof that a measured exception changes the next eligible set
-  - **Worker:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, complete it and record lightweight feedback
-  - **CDH operator:** detect a hotspot, test one intervention under controlled conditions, compare aggregate and cohort outcomes, then save an exception-aware operating rule
+  - **Worker Guide:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, record actual completion and feedback, and use that outcome in the next ranking
+  - **CDH Experiment:** define an intervention brief, run a controlled baseline comparison, measure precinct and subgroup effects, then publish an exception-aware operating rule
 - `/api/decision` — deterministic serverless decision endpoint used by the demonstrator
 - `/api/health` — deployment health endpoint
 
@@ -40,7 +40,14 @@ The worker does not choose an implementation category such as **Internal** or **
 The same pattern drives both use cases:
 
 - **Movement:** destination, deadline, functional need and time flexibility → route × departure time.
-- **Workspace:** people, time, facilities and accessibility → eligible room × time window.
+- **Workspace:** people, time, equipment, sun/glare controls and accessibility → eligible room × time window → hold → confirmed booking.
+
+Mia's journey is the hero application: a Cremorne worker with albinism, photosensitivity and low vision. Her route matching includes direct UV, glare, covered passages, arrival time and high-contrast guidance. Her workspace matching includes adjustable blinds, low-glare lighting and meeting equipment. The engine stores functional requirements rather than a medical diagnosis.
+
+## Two Memory loops
+
+- **Personal Memory:** observed completion time and worker feedback adjust the next route ranking for comparable journeys.
+- **Precinct Memory:** CDH publishes a rule only after a controlled comparison measures the average effect, subgroup guardrails and confidence.
 
 ## What is measured
 

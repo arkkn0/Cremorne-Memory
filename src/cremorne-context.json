@@ -2665,7 +2665,9 @@
       "mode": "Meeting",
       "facilities": [
         "Display",
-        "Video call"
+        "Video call",
+        "Adjustable blinds",
+        "Low-glare lighting"
       ],
       "accessible": true,
       "availability": [

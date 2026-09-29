@@ -1,4 +1,5 @@
 import contextData from './cremorne-context.json'
+import type { JourneyOutcome } from './memory'
 
 export type ProductNeed = 'lower-uv' | 'lower-crowding' | 'fastest' | 'step-free'
 export type ConstraintStrength = 'required' | 'preferred'
@@ -86,7 +87,17 @@ export interface ParsedSpaceBrief {
   people: number
   requireHybrid: boolean
   requireAccessible: boolean
+  requiredEquipment: string[]
   timeLabel: string
+  chips: string[]
+}
+
+export interface ParsedExperimentBrief {
+  workers: number
+  horizonMin: number
+  place: string
+  protectLowUv: boolean
+  protectMobility: boolean
   chips: string[]
 }
 
@@ -108,7 +119,7 @@ export function parseRouteBrief(brief: string): ParsedRouteBrief {
   const destination: DestinationId = text.includes('east richmond') ? 'east-richmond' : 'richmond'
   const need: ProductNeed = /step[- ]?free|wheelchair|mobility/.test(text)
     ? 'step-free'
-    : /avoid (direct )?sun|low[- ]?uv|minimi[sz]e uv|photosens/.test(text)
+    : /avoid (direct )?sun|low[- ]?uv|minimi[sz]e uv|photosens|albin|glare/.test(text)
       ? 'lower-uv'
       : /less crowded|lower crowd|quiet route|avoid crowd/.test(text)
         ? 'lower-crowding'
@@ -139,11 +150,35 @@ export function parseSpaceBrief(brief: string): ParsedSpaceBrief {
   const people = Math.min(100, Math.max(1, Number(peopleMatch?.[1] ?? 6)))
   const requireHybrid = /hybrid|video|teams|zoom|av/.test(text)
   const requireAccessible = /accessible|step[- ]?free|wheelchair/.test(text)
+  const requiredEquipment: string[] = []
+  if (/display|screen|monitor/.test(text)) requiredEquipment.push('Display')
+  if (/projector/.test(text)) requiredEquipment.push('AV')
+  if (/whiteboard/.test(text)) requiredEquipment.push('Whiteboard')
+  if (/flexible (?:seating|layout)|workshop layout/.test(text)) requiredEquipment.push('Flexible seating')
+  if (/adjustable blinds|sun control|avoid direct sun/.test(text)) requiredEquipment.push('Adjustable blinds')
+  if (/low[- ]?glare|avoid glare|glare sensitive/.test(text)) requiredEquipment.push('Low-glare lighting')
   const timeLabel = timeMatch ? normaliseClock(Number(timeMatch[1]), Number(timeMatch[2] ?? 0), timeMatch[3]) : '14:00'
   const chips = [`${people} people`, timeLabel]
   if (requireHybrid) chips.push('Hybrid equipped')
   if (requireAccessible) chips.push('Accessible')
-  return { people, requireHybrid, requireAccessible, timeLabel, chips }
+  chips.push(...requiredEquipment)
+  return { people, requireHybrid, requireAccessible, requiredEquipment, timeLabel, chips }
+}
+
+export function parseExperimentBrief(brief: string): ParsedExperimentBrief {
+  const text = brief.toLowerCase()
+  const workersMatch = text.match(/(\d{2,4})\s*(?:workers|people|pedestrians)/)
+  const horizonMatch = text.match(/(?:over|within|next)\s*(\d{1,2})\s*(?:min|minute)/)
+  const placeMatch = brief.match(/(?:from|at|around)\s+([A-Z][A-Za-z ]+?)(?:\s+over|\s+within|\.|,|$)/)
+  const workers = Math.min(500, Math.max(100, Number(workersMatch?.[1] ?? 300)))
+  const horizonMin = Math.min(60, Math.max(5, Number(horizonMatch?.[1] ?? 15)))
+  const place = placeMatch?.[1]?.trim() || 'Church Street'
+  const protectLowUv = /low[- ]?uv|photosens|sun exposure/.test(text)
+  const protectMobility = /mobility|step[- ]?free|accessible/.test(text)
+  const chips = [`${workers} workers`, `${horizonMin}-min horizon`, place]
+  if (protectLowUv) chips.push('Low-UV guardrail')
+  if (protectMobility) chips.push('Mobility guardrail')
+  return { workers, horizonMin, place, protectLowUv, protectMobility, chips }
 }
 
 export function evaluateProductRoutes({
@@ -154,6 +189,7 @@ export function evaluateProductRoutes({
   uvIndex,
   workers,
   memoryActive,
+  personalOutcomes = [],
 }: {
   destination: DestinationId
   need: ProductNeed
@@ -162,6 +198,7 @@ export function evaluateProductRoutes({
   uvIndex: number
   workers: number
   memoryActive: boolean
+  personalOutcomes?: JourneyOutcome[]
 }): EvaluatedProductRoute[] {
   const routes = productContext.routeSets[destination]
   const capacities = destination === 'richmond' ? [92, 78, 64] : [72, 62, 58]
@@ -175,6 +212,7 @@ export function evaluateProductRoutes({
     const capacity = capacities[index]
     const remainingCapacity = capacity - predictedLoad
     const exposureIndex = Math.round(uvIndex * route.durationMin * (1 - route.canopyAdjacentPct / 100 * 0.72))
+    const personalOutcome = personalOutcomes.find((outcome) => outcome.routeId === route.id)
     const reasons: string[] = []
     let eligible = true
 
@@ -197,14 +235,17 @@ export function evaluateProductRoutes({
 
     if (route.canopyAdjacentPct >= 20) reasons.push(`${route.canopyAdjacentPct}% tree-canopy-adjacent geometry`)
     if (index === 2 && destination === 'east-richmond') reasons.push('Lowest estimated UV exposure of the eligible routes')
+    if (need === 'lower-uv' && index === 2) reasons.push('Covered geometry reduces direct sun and glare')
     if (suggestedDelayMin) reasons.push(`Predicted load falls after an ${suggestedDelayMin}-minute shift`)
+    if (personalOutcome) reasons.push(`Personal Memory: this route previously felt ${personalOutcome.feedback}`)
 
     const timeWeight = need === 'fastest' ? 12 : 5
     const exposureWeight = need === 'lower-uv' ? 1.1 : 0.18
     const crowdingWeight = need === 'lower-crowding' ? 1.4 : 0.15
     const preferenceMultiplier = strength === 'preferred' ? 0.72 : 1
     const capacityPenalty = remainingCapacity < 12 ? 60 : 0
-    const score = route.durationMin * timeWeight + exposureIndex * exposureWeight * preferenceMultiplier + predictedLoad * crowdingWeight * preferenceMultiplier + capacityPenalty
+    const personalAdjustment = personalOutcome?.feedback === 'better' ? -12 : personalOutcome?.feedback === 'worse' ? 35 : 0
+    const score = route.durationMin * timeWeight + exposureIndex * exposureWeight * preferenceMultiplier + predictedLoad * crowdingWeight * preferenceMultiplier + capacityPenalty + personalAdjustment
 
     return {
       ...route,
@@ -244,11 +285,15 @@ export function findSpaces({
   people,
   requireHybrid,
   requireAccessible,
+  requiredEquipment = [],
+  timeLabel = '14:00',
   scope = 'all',
 }: {
   people: number
   requireHybrid: boolean
   requireAccessible: boolean
+  requiredEquipment?: string[]
+  timeLabel?: string
   scope?: SpaceScope
 }) {
   return productContext.spaces.filter((space) => scope === 'all' || space.accessClass === scope).map((space) => {
@@ -258,7 +303,24 @@ export function findSpaces({
       blockers.push('Hybrid meeting equipment not listed')
     }
     if (requireAccessible && !space.accessible) blockers.push('Accessibility not verified')
+    requiredEquipment.forEach((equipment) => {
+      const matched = equipment === 'Display'
+        ? space.facilities.some((facility) => ['Display', 'AV'].includes(facility))
+        : equipment === 'Flexible seating'
+          ? space.facilities.some((facility) => ['Flexible seating', 'Flexible layout'].includes(facility))
+          : space.facilities.includes(equipment)
+      if (!matched) blockers.push(`${equipment} not listed`)
+    })
     if (space.availability.length === 0) blockers.push('No owner-provided demo window')
+    if (space.availability.length > 0 && !space.availability.some((window) => isTimeWithinWindow(timeLabel, window))) {
+      blockers.push(`Not available at ${timeLabel}`)
+    }
     return { ...space, eligible: blockers.length === 0, blockers }
   }).sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.capacity - b.capacity)
+}
+
+function isTimeWithinWindow(timeLabel: string, window: string) {
+  const [start, end] = window.split(/[–-]/).map((value) => value.trim())
+  if (!start || !end) return false
+  return timeLabel >= start && timeLabel < end
 }
