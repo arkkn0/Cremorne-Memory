@@ -1,799 +1,324 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  ArrowDown,
-  ArrowRight,
-  Building2,
-  Check,
-  ChevronRight,
-  CircleDot,
-  Clock3,
-  CloudSun,
-  Code2,
-  Database,
-  Eye,
-  Footprints,
-  Gauge,
-  History,
-  KeyRound,
-  Layers3,
-  MapPin,
-  MemoryStick,
-  MousePointer2,
-  RefreshCcw,
-  ShieldCheck,
-  Sparkles,
-  Sun,
-  Users,
-  Workflow,
-  X,
+  Activity, ArrowRight, BookOpenCheck, BrainCircuit, Building2, Check, ChevronRight,
+  CircleGauge, Database, ExternalLink, FlaskConical, Layers3, Map as MapIcon, Play,
+  RotateCcw, Route, ServerCog, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
 } from 'lucide-react'
-import type {
-  DemoPhase,
-  FunctionalNeed,
-  MemoryRule,
-  RouteEvaluation,
-  RouteId,
-  Scenario,
-} from './domain'
-import {
-  chooseRoute,
-  distributeWithMemory,
-  evaluateRoutes,
-  FIRST_EXCEPTION,
-  ROUTES,
-  simulateScenario,
-} from './engine'
+import CremorneMap from './CremorneMap'
+import { FIRST_EXCEPTION, simulateScenario } from './engine'
 import { clearMemory, loadMemory, saveRule } from './memory'
+import type { MemoryRule } from './domain'
+import {
+  demandAtTime, evaluateProductRoutes, findSpaces, productContext,
+  type DestinationId, type ProductNeed,
+} from './product'
 
-const phases: { id: DemoPhase; short: string; label: string }[] = [
-  { id: 'observe', short: '01', label: 'Observe' },
-  { id: 'first-pass', short: '02', label: 'Predict + match' },
-  { id: 'measured', short: '03', label: 'Measure' },
-  { id: 'remembered', short: '04', label: 'Learn' },
-  { id: 'replay', short: '05', label: 'Next pass' },
-]
+type AppView = 'worker' | 'lab' | 'spaces' | 'memory'
+type LabPhase = 'ready' | 'measured' | 'stored' | 'replayed'
 
-const phaseIndex = (phase: DemoPhase) => phases.findIndex((item) => item.id === phase)
+const PATHS = { landing: '/', product: '/app' }
+const go = (path: string) => { window.location.href = path }
 
-const defaultScenario: Scenario = {
-  uvIndex: 8.2,
-  temperature: 31,
-  crowding: 82,
-  workers: 300,
-  departure: '2:20 pm',
-  weatherSource: 'scenario',
-}
-
-const needLabels: Record<FunctionalNeed, string> = {
-  standard: 'Fast + less crowded',
-  'low-uv': 'Low UV required',
-  'step-free': 'Step-free required',
-}
-
-function App() {
-  const [phase, setPhase] = useState<DemoPhase>('observe')
-  const [need, setNeed] = useState<FunctionalNeed>('standard')
-  const [scenario, setScenario] = useState<Scenario>(defaultScenario)
-  const [rules, setRules] = useState<MemoryRule[]>(() => loadMemory())
-  const [selectedRoute, setSelectedRoute] = useState<RouteId>('B')
-  const [workspaceOpen, setWorkspaceOpen] = useState(false)
-  const [memoryOpen, setMemoryOpen] = useState(false)
-  const labRef = useRef<HTMLElement>(null)
-  const result = useMemo(() => simulateScenario(scenario.workers, 42), [scenario.workers])
-  const activeRules = phase === 'replay' ? rules : []
-  const evaluatedRoutes = useMemo(
-    () => evaluateRoutes(scenario, need, activeRules),
-    [scenario, need, activeRules],
-  )
-  const selected = evaluatedRoutes.find((route) => route.id === selectedRoute) ?? evaluatedRoutes[0]
-  const learnedDistribution = useMemo(
-    () => distributeWithMemory(scenario.workers),
-    [scenario.workers],
-  )
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const url =
-      'https://api.open-meteo.com/v1/forecast?latitude=-37.829&longitude=144.992&current=temperature_2m&hourly=uv_index&forecast_days=1&timezone=Australia%2FSydney'
-
-    fetch(url, { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error('Weather unavailable')
-        return response.json()
-      })
-      .then((data: { current?: { temperature_2m?: number; time?: string }; hourly?: { time?: string[]; uv_index?: number[] } }) => {
-        const currentTime = data.current?.time
-        const timeIndex = currentTime ? data.hourly?.time?.findIndex((time) => time === currentTime) : -1
-        const uv = timeIndex !== undefined && timeIndex >= 0 ? data.hourly?.uv_index?.[timeIndex] : undefined
-        const temp = data.current?.temperature_2m
-
-        if (typeof temp === 'number') {
-          setScenario((current) => ({
-            ...current,
-            temperature: Math.round(temp),
-            uvIndex: typeof uv === 'number' && uv >= 6.5 ? Number(uv.toFixed(1)) : current.uvIndex,
-            weatherSource: 'live',
-          }))
-        }
-      })
-      .catch(() => undefined)
-
-    return () => controller.abort()
-  }, [])
-
-  useEffect(() => {
-    if (phase === 'replay') {
-      const best = chooseRoute(scenario, need, rules)
-      setSelectedRoute(best.id)
-    }
-  }, [phase, need, rules, scenario])
-
-  const startDemo = () => {
-    setPhase('observe')
-    setNeed('standard')
-    setSelectedRoute('B')
-    labRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  const nextAction = () => {
-    if (phase === 'observe') {
-      setPhase('first-pass')
-      setSelectedRoute('B')
-      return
-    }
-    if (phase === 'first-pass') {
-      setPhase('measured')
-      return
-    }
-    if (phase === 'measured') {
-      const next = saveRule(FIRST_EXCEPTION)
-      setRules(next)
-      setPhase('remembered')
-      setMemoryOpen(true)
-      return
-    }
-    if (phase === 'remembered') {
-      setMemoryOpen(false)
-      setNeed('low-uv')
-      setPhase('replay')
-      return
-    }
-    setWorkspaceOpen(true)
-  }
-
-  const resetStory = () => {
-    clearMemory()
-    setRules([])
-    setNeed('standard')
-    setSelectedRoute('B')
-    setPhase('observe')
-    setWorkspaceOpen(false)
-    setMemoryOpen(false)
-  }
-
+function Brand({ dark = false }: { dark?: boolean }) {
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <a className="brand" href="#top" aria-label="Cremorne Memory home">
-          <span className="brand-mark" aria-hidden="true"><span /></span>
-          <span>Cremorne Memory</span>
-        </a>
-        <nav className="topnav" aria-label="Primary navigation">
-          <a href="#decision-lab">Decision lab</a>
-          <a href="#architecture">How it works</a>
-          <button className="nav-memory" onClick={() => setMemoryOpen(true)}>
-            <MemoryStick size={15} /> Memory <span>{rules.length}</span>
-          </button>
-          <a className="github-link" href="https://github.com/arkkn0/Team-Bubble" target="_blank" rel="noreferrer">
-            <Code2 size={16} /> Code
-          </a>
-        </nav>
+    <a className={`brand ${dark ? 'brand--dark' : ''}`} href={PATHS.landing} aria-label="Cremorne Memory home">
+      <span className="brand__mark"><span /><span /><span /></span>
+      <span>Cremorne <strong>Memory</strong></span>
+    </a>
+  )
+}
+
+function Landing() {
+  return (
+    <main className="landing">
+      <header className="landing-nav wrap">
+        <Brand />
+        <div className="landing-nav__links">
+          <a href="#how">How it works</a>
+          <a href="#proof">Why it matters</a>
+          <button className="button button--ink" onClick={() => go(PATHS.product)}>Try the product <ArrowRight size={17} /></button>
+        </div>
       </header>
 
-      <main id="top">
-        <section className="hero">
-          <div className="hero-copy">
-            <div className="eyebrow"><CircleDot size={14} /> One square kilometre. One shared learning layer.</div>
-            <h1>The capacity is already here.<br /><em>Cremorne just can’t see it together.</em></h1>
-            <p className="hero-lede">
-              Predict a mismatch. Find capacity that is genuinely usable. Measure what happened—and make the next decision better.
-            </p>
-            <div className="hero-actions">
-              <button className="primary-button" onClick={startDemo}>
-                Run the 90-second proof <ArrowDown size={18} />
-              </button>
-              <button className="text-button" onClick={() => setWorkspaceOpen(true)}>
-                See workspace capacity <ArrowRight size={17} />
-              </button>
-            </div>
-            <div className="hero-stats" aria-label="Cremorne context">
-              <div><strong>700+</strong><span>businesses</span></div>
-              <div><strong>10,000+</strong><span>workers</span></div>
-              <div><strong>&lt;1 km²</strong><span>shared precinct</span></div>
-            </div>
+      <section className="hero wrap">
+        <div className="hero__copy">
+          <p className="eyebrow"><span className="live-dot" /> Built for one square kilometre of Cremorne</p>
+          <h1>The capacity is already here. <em>Cremorne just cannot see it together.</em></h1>
+          <p className="hero__lead">Cremorne Memory predicts where the working day will tighten, matches people to capacity they can actually use, and remembers the measured result.</p>
+          <div className="hero__actions">
+            <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try Cremorne Memory <ArrowRight size={19} /></button>
+            <a className="text-link" href="#proof">See the learning moment <ChevronRight size={16} /></a>
           </div>
-
-          <div className="hero-visual" aria-label="Cremorne capacity illustration">
-            <div className="hero-image-wrap">
-              <img src="/illustrations/cremorne-capacity-reframe.png" alt="Hand-drawn Cremorne streets, covered passage and workspace" />
-              <div className="scribble-label label-overloaded">Overloaded</div>
-              <div className="scribble-label label-spare">Spare movement</div>
-              <div className="scribble-label label-underused">Underused</div>
-            </div>
-            <div className="reframe-card">
-              <span>STREETS · PASSAGES · ROOMS · TIME</span>
-              <ArrowRight size={24} />
-              <strong>USABLE CAPACITY</strong>
-            </div>
+          <div className="hero__facts" aria-label="Cremorne facts">
+            <div><strong>700+</strong><span>businesses</span></div>
+            <div><strong>10,000+</strong><span>workers</span></div>
+            <div><strong>&lt;1 km²</strong><span>one shared precinct</span></div>
           </div>
-        </section>
-
-        <section className="reframe-strip" aria-label="Product definition">
-          <span className="empty-rule">Empty</span>
-          <span>≠</span>
-          <span className="available-rule">available</span>
-          <span>≠</span>
-          <span className="usable-rule">usable</span>
-          <p>A route or room enters the eligible set only when its access, time, capacity and functional constraints are satisfied.</p>
-        </section>
-
-        <section className="decision-lab" id="decision-lab" ref={labRef}>
-          <div className="section-heading">
-            <div>
-              <span className="section-kicker">WORKING PROTOTYPE · SYNTHETIC CREMORNE SCENARIO</span>
-              <h2>One afternoon. Two passes.<br />A different second decision.</h2>
-            </div>
-            <button className="reset-button" onClick={resetStory}><RefreshCcw size={15} /> Reset story</button>
-          </div>
-
-          <LearningRail phase={phase} />
-
-          <div className="lab-grid">
-            <div className="map-stage">
-              <ScenarioBar scenario={scenario} phase={phase} />
-              <PrecinctMap
-                routes={evaluatedRoutes}
-                selectedRoute={selectedRoute}
-                phase={phase}
-                onSelect={setSelectedRoute}
-              />
-              <div className="map-caption">
-                <div><span className="pulse-dot" /> Predicted state at {scenario.departure}</div>
-                <div>Route geometry and demand are synthetic for the MVP</div>
-              </div>
-            </div>
-
-            <div className="decision-stage">
-              <DecisionHeader phase={phase} need={need} />
-              {phase === 'measured' ? (
-                <OutcomeReveal result={result} />
-              ) : phase === 'remembered' ? (
-                <RuleWritten rule={FIRST_EXCEPTION} />
-              ) : (
-                <>
-                  <NeedSelector value={need} onChange={setNeed} locked={phase === 'replay'} />
-                  <RouteList
-                    routes={evaluatedRoutes}
-                    selectedRoute={selectedRoute}
-                    onSelect={setSelectedRoute}
-                    phase={phase}
-                  />
-                  {(phase === 'first-pass' || phase === 'replay') && selected && (
-                    <DecisionExplanation route={selected} need={need} phase={phase} />
-                  )}
-                </>
-              )}
-
-              <div className="decision-footer">
-                <button className="primary-button full" onClick={nextAction}>
-                  {phase === 'observe' && <>Run first-pass match <ArrowRight size={17} /></>}
-                  {phase === 'first-pass' && <>Measure the outcome <Gauge size={17} /></>}
-                  {phase === 'measured' && <>Write this boundary to Memory <Database size={17} /></>}
-                  {phase === 'remembered' && <>Replay for Mia <RefreshCcw size={17} /></>}
-                  {phase === 'replay' && <>Test the same Memory on a room <Building2 size={17} /></>}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <ComparisonBand
-            phase={phase}
-            baseline={result.routeLoads}
-            learned={learnedDistribution}
-          />
-        </section>
-
-        <section className="architecture" id="architecture">
-          <div className="architecture-intro">
-            <span className="section-kicker">THE BACKEND IS THE PRODUCT ADVANTAGE</span>
-            <h2>A decision becomes local operating knowledge.</h2>
-            <p>
-              The interface changes by user. The underlying object stays the same: a context, a demand, eligible capacity, a measured outcome and the boundary of where that outcome holds.
-            </p>
-          </div>
-          <div className="architecture-flow" aria-label="Cremorne Memory architecture">
-            <ArchitectureNode icon={<Eye />} number="01" title="Observe" detail="UV · demand · asset state" />
-            <FlowArrow />
-            <ArchitectureNode icon={<Gauge />} number="02" title="Predict" detail="State at time of use" />
-            <FlowArrow />
-            <ArchitectureNode icon={<History />} number="03" title="Retrieve" detail="Comparable local evidence" accent />
-            <FlowArrow />
-            <ArchitectureNode icon={<Workflow />} number="04" title="Match" detail="Graph + hard constraints" />
-            <FlowArrow />
-            <ArchitectureNode icon={<MousePointer2 />} number="05" title="Choose / test" detail="Worker or bounded pilot" />
-            <FlowArrow />
-            <ArchitectureNode icon={<Database />} number="06" title="Measure + learn" detail="Outcome · exception · confidence" accent />
-          </div>
-          <div className="architecture-foundation">
-            <div>
-              <Layers3 size={19} />
-              <span><strong>Capacity Graph</strong> represents routes, spaces, time windows and their access rules.</span>
-            </div>
-            <div>
-              <ShieldCheck size={19} />
-              <span><strong>Constraint engine</strong> establishes eligibility before preferences are ranked.</span>
-            </div>
-            <div>
-              <MemoryStick size={19} />
-              <span><strong>Operational Memory</strong> retrieves outcomes only inside comparable conditions.</span>
-            </div>
-          </div>
-          <div className="privacy-line">
-            <span>Share constraints, not diagnoses.</span>
-            <span>Share capacity, not calendars.</span>
-            <span>Store outcomes, not identities.</span>
-          </div>
-        </section>
-
-        <section className="story-section">
-          <div className="story-copy">
-            <span className="section-kicker">THE HUMAN REASON</span>
-            <h2>Mia does not need a “special mode.”<br />She needs the right route to be eligible.</h2>
-            <p>
-              Mia shares one functional requirement—low UV. The system never needs her diagnosis. Once a comparable harm has been measured, it becomes part of the next eligibility decision.
-            </p>
-            <div className="functional-chip"><Sun size={16} /> LOW UV · REQUIRED</div>
-          </div>
-          <div className="storyboard">
-            <figure>
-              <div className="story-number">FIRST PASS</div>
-              <img src="/illustrations/mia-before.png" alt="Mia facing a bright and crowded Church Street route" />
-              <figcaption>Fast on average.<br /><strong>Too exposed for Mia.</strong></figcaption>
-            </figure>
-            <div className="story-arrow"><ArrowRight /></div>
-            <figure>
-              <div className="story-number">NEXT PASS</div>
-              <img src="/illustrations/mia-after.png" alt="Mia using a shaded route through a covered arcade" />
-              <figcaption>Comparable context retrieved.<br /><strong>Shadow Route C is eligible.</strong></figcaption>
-            </figure>
-          </div>
-          <div className="story-closing">Cremorne has seen this before.</div>
-        </section>
-      </main>
-
-      <footer>
-        <div className="footer-brand"><span className="brand-mark"><span /></span> Cremorne Memory</div>
-        <p>Use the capacity Cremorne already has. Learn from every outcome. Make the next decision better.</p>
-        <a href="https://github.com/arkkn0/Team-Bubble" target="_blank" rel="noreferrer"><Code2 size={16} /> Open source prototype</a>
-      </footer>
-
-      {memoryOpen && (
-        <MemoryDrawer rules={rules} onClose={() => setMemoryOpen(false)} onReplay={() => {
-          setMemoryOpen(false)
-          setNeed('low-uv')
-          setPhase('replay')
-          labRef.current?.scrollIntoView({ behavior: 'smooth' })
-        }} />
-      )}
-      {workspaceOpen && <WorkspaceModal onClose={() => setWorkspaceOpen(false)} />}
-    </div>
-  )
-}
-
-function LearningRail({ phase }: { phase: DemoPhase }) {
-  const active = phaseIndex(phase)
-  return (
-    <div className="learning-rail">
-      {phases.map((item, index) => (
-        <div className={`rail-step ${index <= active ? 'active' : ''}`} key={item.id}>
-          <span>{index < active ? <Check size={14} /> : item.short}</span>
-          <strong>{item.label}</strong>
-          {index < phases.length - 1 && <i />}
         </div>
-      ))}
-    </div>
-  )
-}
 
-function ScenarioBar({ scenario, phase }: { scenario: Scenario; phase: DemoPhase }) {
-  return (
-    <div className="scenario-bar">
-      <div className="scenario-place"><MapPin size={17} /> Church Street · Cremorne</div>
-      <div><Sun size={16} /><strong>UV {scenario.uvIndex}</strong><span>high</span></div>
-      <div><CloudSun size={16} /><strong>{scenario.temperature}°C</strong><span>{scenario.weatherSource === 'live' ? 'live weather' : 'scenario'}</span></div>
-      <div><Users size={16} /><strong>{scenario.crowding}%</strong><span>predicted load</span></div>
-      <div className={`scenario-pass ${phase === 'replay' ? 'second' : ''}`}>
-        {phase === 'replay' ? 'NEXT PASS' : 'FIRST PASS'}
-      </div>
-    </div>
-  )
-}
-
-function PrecinctMap({
-  routes,
-  selectedRoute,
-  phase,
-  onSelect,
-}: {
-  routes: RouteEvaluation[]
-  selectedRoute: RouteId
-  phase: DemoPhase
-  onSelect: (id: RouteId) => void
-}) {
-  const showMemory = phase === 'replay'
-  return (
-    <div className="precinct-map">
-      <svg viewBox="0 0 760 430" role="img" aria-label="Simplified Cremorne route capacity map">
-        <defs>
-          <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#d8d0c1" strokeWidth="0.7" opacity="0.55" />
-          </pattern>
-          <filter id="rough">
-            <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.2" />
-          </filter>
-        </defs>
-        <rect width="760" height="430" fill="#f1eadf" />
-        <rect width="760" height="430" fill="url(#grid)" />
-
-        <g className="map-buildings" filter="url(#rough)">
-          <path d="M22 38 H188 V142 H112 V184 H22 Z" />
-          <path d="M224 26 H352 V152 H224 Z" />
-          <path d="M396 18 H555 V142 H396 Z" />
-          <path d="M596 20 H738 V160 H596 Z" />
-          <path d="M20 232 H135 V400 H20 Z" />
-          <path d="M180 286 H292 V410 H180 Z" />
-          <path d="M346 250 H486 V410 H346 Z" />
-          <path d="M548 236 H740 V406 H548 Z" />
-        </g>
-        <g className="map-building-labels">
-          <text x="45" y="86">OFFICES</text>
-          <text x="246" y="84">STUDIO</text>
-          <text x="420" y="72">ARCADE</text>
-          <text x="616" y="82">STATION</text>
-          <text x="36" y="318">WORK</text>
-          <text x="369" y="326">LOBBY</text>
-          <text x="598" y="326">CDH</text>
-        </g>
-        <path className="church-street" d="M8 212 C182 194 306 214 446 172 C574 134 648 128 752 174" />
-        <text className="street-label" x="278" y="190">CHURCH STREET</text>
-        <path className="covered-zone" d="M395 213 L484 213 L514 178 L426 178 Z" />
-        <text className="covered-label" x="410" y="237">COVERED LINK</text>
-
-        {routes.map((route) => {
-          const selected = route.id === selectedRoute
-          const isFiltered = !route.eligible && showMemory
-          return (
-            <g
-              key={route.id}
-              className={`map-route ${selected ? 'selected' : ''} ${isFiltered ? 'filtered' : ''}`}
-              onClick={() => onSelect(route.id)}
-              role="button"
-              tabIndex={0}
-              aria-label={`Select ${route.name}`}
-            >
-              <path className="route-casing" d={route.path} />
-              <path className="route-line" d={route.path} stroke={route.color} />
-            </g>
-          )
-        })}
-
-        <g className="origin-marker">
-          <circle cx="86" cy="342" r="17" />
-          <circle cx="86" cy="342" r="6" />
-          <text x="54" y="380">MIA</text>
-        </g>
-        <g className="destination-marker">
-          <circle cx="680" cy="72" r="17" />
-          <path d="M673 72 l5 5 10 -12" />
-          <text x="642" y="110">OFFICE</text>
-        </g>
-
-        {showMemory && (
-          <g className="memory-map-callout">
-            <path d="M514 268 C555 248 573 230 590 200" />
-            <rect x="488" y="265" width="232" height="76" rx="12" />
-            <text x="508" y="291">LOCAL RULE RETRIEVED</text>
-            <text x="508" y="316">Route B exceeds Mia’s UV limit.</text>
-          </g>
-        )}
-      </svg>
-      <div className="map-legend">
-        {ROUTES.map((route) => <button key={route.id} onClick={() => onSelect(route.id)}><i style={{ background: route.color }} /> Route {route.id}</button>)}
-      </div>
-    </div>
-  )
-}
-
-function DecisionHeader({ phase, need }: { phase: DemoPhase; need: FunctionalNeed }) {
-  const copy: Record<DemoPhase, { overline: string; title: string; text: string }> = {
-    observe: {
-      overline: 'OBSERVE',
-      title: 'A mismatch is forming.',
-      text: 'Church Street is predicted to reach 82% load as UV remains high. Three route-time capacity units are available.',
-    },
-    'first-pass': {
-      overline: 'PREDICT + MATCH',
-      title: 'Route B wins the first pass.',
-      text: 'Generic logic sees a fast, less crowded route. The first pass has no comparable local exception to retrieve.',
-    },
-    measured: {
-      overline: 'MEASURE',
-      title: 'The average hides two worse journeys.',
-      text: 'The intervention improves aggregate movement. Outcome distribution tells a different story.',
-    },
-    remembered: {
-      overline: 'LEARN',
-      title: 'The boundary becomes reusable.',
-      text: 'Cremorne stores the context, outcome and exception—not a blanket claim that Route B works.',
-    },
-    replay: {
-      overline: 'RETRIEVE + MATCH',
-      title: 'Same conditions. Better eligible set.',
-      text: `Memory qualifies the prediction before options are shown for: ${needLabels[need]}.`,
-    },
-  }
-  return (
-    <div className="decision-header">
-      <span>{copy[phase].overline}</span>
-      <h3>{copy[phase].title}</h3>
-      <p>{copy[phase].text}</p>
-    </div>
-  )
-}
-
-function NeedSelector({ value, onChange, locked }: { value: FunctionalNeed; onChange: (value: FunctionalNeed) => void; locked: boolean }) {
-  const needs: FunctionalNeed[] = ['standard', 'low-uv', 'step-free']
-  return (
-    <div className="need-selector">
-      <label>Mia’s hard requirement</label>
-      <div>
-        {needs.map((need) => (
-          <button key={need} className={value === need ? 'active' : ''} onClick={() => !locked && onChange(need)} disabled={locked && value !== need}>
-            {need === 'low-uv' && <Sun size={14} />}
-            {need === 'step-free' && <Footprints size={14} />}
-            {need === 'standard' && <Clock3 size={14} />}
-            {needLabels[need]}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function RouteList({ routes, selectedRoute, onSelect, phase }: { routes: RouteEvaluation[]; selectedRoute: RouteId; onSelect: (id: RouteId) => void; phase: DemoPhase }) {
-  const visible = phase === 'observe' ? routes.slice().sort((a, b) => a.id.localeCompare(b.id)) : routes
-  return (
-    <div className="route-list">
-      {visible.map((route, index) => (
-        <button
-          key={route.id}
-          className={`route-card ${selectedRoute === route.id ? 'selected' : ''} ${!route.eligible ? 'ineligible' : ''}`}
-          onClick={() => onSelect(route.id)}
-        >
-          <span className="route-swatch" style={{ backgroundColor: route.color }} />
-          <div className="route-card-main">
-            <div className="route-title-row">
-              <strong>{route.name}</strong>
-              {phase !== 'observe' && index === 0 && route.eligible && <span className="best-label">BEST ELIGIBLE</span>}
-              {!route.eligible && <span className="blocked-label">OUTSIDE SET</span>}
-            </div>
-            <span>{route.descriptor}</span>
-            <div className="route-metrics">
-              <span><Clock3 size={13} /> {route.minutes} min</span>
-              <span><Sun size={13} /> UV {route.directUv}</span>
-              <span><Users size={13} /> {route.capacity - route.predictedLoad} places left</span>
-            </div>
-          </div>
-          <ChevronRight size={18} />
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function DecisionExplanation({ route, need, phase }: { route: RouteEvaluation; need: FunctionalNeed; phase: DemoPhase }) {
-  const replay = phase === 'replay'
-  return (
-    <div className={`explanation ${replay ? 'memory-aware' : ''}`}>
-      <div className="explanation-top">
-        {replay ? <MemoryStick size={17} /> : <Sparkles size={17} />}
-        <strong>{replay ? 'Why this eligible set changed' : 'Why this ranks first'}</strong>
-      </div>
-      {replay && need === 'low-uv' ? (
-        <p>A comparable Church Street outcome is in Memory. Route B is filtered before preference ranking; Shadow Route C stays within the UV and arrival constraints.</p>
-      ) : (
-        <p>{route.name} minimises predicted walking time and crowding for the generic first pass. Its exposed crossing is still treated as an estimate.</p>
-      )}
-      <div className="reason-chips">
-        {route.reasons.slice(0, 2).map((reason) => <span key={reason}><Check size={12} /> {reason}</span>)}
-      </div>
-    </div>
-  )
-}
-
-function OutcomeReveal({ result }: { result: ReturnType<typeof simulateScenario> }) {
-  return (
-    <div className="outcome-reveal">
-      <div className="aggregate-result">
-        <span>AGGREGATE OUTCOME</span>
-        <div><strong>{result.crowdingDelta}%</strong><small>peak crowding</small></div>
-        <div><strong>{result.walkingDelta}%</strong><small>walking time</small></div>
-        <i>Synthetic MVP output</i>
-      </div>
-      <div className="missed-title">WHO DID WE MISS?</div>
-      <div className="missed-grid">
-        <div>
-          <span className="cohort-icon sun"><Sun /></span>
-          <p>LOW-UV COHORT</p>
-          <strong>+{result.uvDeltaLowUv}%</strong>
-          <small>direct UV exposure</small>
+        <div className="hero__visual" aria-label="Illustrated Cremorne capacity problem">
+          <img src="/illustrations/cremorne-capacity-reframe.png" alt="Hand-drawn Cremorne scene showing a crowded exposed street, a covered route and spare indoor capacity" />
+          <div className="hero-note hero-note--crowd">Overloaded now</div>
+          <div className="hero-note hero-note--route">Usable at 4:10pm</div>
+          <div className="hero-note hero-note--room">Available ≠ usable</div>
+          <div className="hero-graph"><span>PLACE</span><ArrowRight size={15} /><strong>CAPACITY × TIME × RULES</strong></div>
         </div>
-        <div>
-          <span className="cohort-icon mobility"><Footprints /></span>
-          <p>MOBILITY-CONSTRAINED</p>
-          <strong>+{result.mobilityFrictionDelta}%</strong>
-          <small>travel friction</small>
+      </section>
+
+      <section className="product-window wrap" aria-label="Cremorne Memory product preview">
+        <div className="product-window__chrome">
+          <span /><span /><span /><small>LIVE PRODUCT PREVIEW</small>
+          <button onClick={() => go(PATHS.product)}>Open prototype <ArrowRight size={15} /></button>
         </div>
-      </div>
-      <p className="outcome-note">The first result is useful evidence. Its exception tells us where that result stops being safe to reuse.</p>
-    </div>
-  )
-}
-
-function RuleWritten({ rule }: { rule: MemoryRule }) {
-  return (
-    <div className="rule-written">
-      <div className="rule-stamp"><Check size={22} /> OPERATING RULE WRITTEN</div>
-      <div className="rule-equation">
-        <span>CONTEXT</span><b>+</b><span>CAPACITY</span><b>+</b><span>OUTCOME</span><b>+</b><span>EXCEPTION</span>
-      </div>
-      <div className="rule-card-inner">
-        <div><span>When</span><strong>Church St · UV ≥ {rule.context.uvMin} · crowding ≥ {rule.context.crowdingMin}%</strong></div>
-        <div><span>Evidence</span><strong>Route B reduced crowding {Math.abs(rule.outcome.crowdingDelta)}% and walking time {Math.abs(rule.outcome.walkingDelta)}%</strong></div>
-        <div className="exception-row"><span>Except</span><strong>Low-UV travel: exposure +{rule.exception.delta}%</strong></div>
-        <div><span>Boundary</span><strong>{rule.deploymentBoundary}</strong></div>
-      </div>
-      <div className="confidence-row"><span>SIMULATION EVIDENCE</span><i><b style={{ width: `${rule.confidence * 100}%` }} /></i><strong>{Math.round(rule.confidence * 100)}% prototype confidence</strong></div>
-    </div>
-  )
-}
-
-function ComparisonBand({ phase, baseline, learned }: { phase: DemoPhase; baseline: Record<RouteId, number>; learned: Record<RouteId, number> }) {
-  const replay = phase === 'replay'
-  return (
-    <div className={`comparison-band ${replay ? 'visible' : ''}`}>
-      <div className="comparison-title">
-        <span>{replay ? 'SAME DEMAND · SAME CONDITIONS' : 'CONTROLLED COMPARISON'}</span>
-        <strong>{replay ? 'Different decision logic. A measurable second outcome.' : 'The next pass will reuse exactly the same scenario.'}</strong>
-      </div>
-      <Distribution label="First pass" values={baseline} />
-      <ArrowRight size={22} />
-      <Distribution label="Memory-aware" values={learned} muted={!replay} />
-      <div className="comparison-callout">
-        <strong>{replay ? '100%' : '—'}</strong>
-        <span>represented hard constraints passed</span>
-      </div>
-    </div>
-  )
-}
-
-function Distribution({ label, values, muted }: { label: string; values: Record<RouteId, number>; muted?: boolean }) {
-  const total = values.A + values.B + values.C
-  return (
-    <div className={`distribution ${muted ? 'muted' : ''}`}>
-      <span>{label}</span>
-      <div className="distribution-bar">
-        <i className="a" style={{ width: `${(values.A / total) * 100}%` }} />
-        <i className="b" style={{ width: `${(values.B / total) * 100}%` }} />
-        <i className="c" style={{ width: `${(values.C / total) * 100}%` }} />
-      </div>
-      <small>A {values.A} · B {values.B} · C {values.C}</small>
-    </div>
-  )
-}
-
-function ArchitectureNode({ icon, number, title, detail, accent }: { icon: React.ReactNode; number: string; title: string; detail: string; accent?: boolean }) {
-  return (
-    <div className={`architecture-node ${accent ? 'accent' : ''}`}>
-      <span className="node-number">{number}</span>
-      <span className="node-icon">{icon}</span>
-      <strong>{title}</strong>
-      <small>{detail}</small>
-    </div>
-  )
-}
-
-function FlowArrow() {
-  return <div className="flow-arrow"><ChevronRight /></div>
-}
-
-function MemoryDrawer({ rules, onClose, onReplay }: { rules: MemoryRule[]; onClose: () => void; onReplay: () => void }) {
-  return (
-    <div className="overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <aside className="memory-drawer">
-        <button className="icon-close" onClick={onClose} aria-label="Close Memory"><X /></button>
-        <div className="drawer-title"><MemoryStick /><span>CREMORNE MEMORY</span><h3>Local operating rules</h3></div>
-        {rules.length === 0 ? (
-          <div className="empty-memory">
-            <Database size={32} />
-            <h4>No local rule yet.</h4>
-            <p>Run the first-pass intervention and measure its outcome. The result becomes the first reusable Memory record.</p>
+        <div className="preview-layout">
+          <div className="preview-sidebar">
+            <div className="preview-logo">CM</div>
+            <span className="is-on"><MapIcon size={18} /> Worker map</span>
+            <span><FlaskConical size={18} /> Precinct lab</span>
+            <span><Building2 size={18} /> Spaces</span>
+            <span><BrainCircuit size={18} /> Memory</span>
           </div>
-        ) : (
-          <div className="memory-records">
-            {rules.map((rule) => (
-              <article key={rule.id}>
-                <div className="record-head"><span>SIMULATION EVIDENCE</span><strong>{Math.round(rule.confidence * 100)}% confidence</strong></div>
-                <h4>High-UV Church Street redistribution</h4>
-                <div className="record-line"><span>CONTEXT</span><p>UV ≥ {rule.context.uvMin} · crowding ≥ {rule.context.crowdingMin}%</p></div>
-                <div className="record-line"><span>OUTCOME</span><p>Crowding {rule.outcome.crowdingDelta}% · walking {rule.outcome.walkingDelta}%</p></div>
-                <div className="record-line exception"><span>EXCEPTION</span><p>Low-UV exposure +{rule.exception.delta}%</p></div>
-                <div className="record-line"><span>BOUNDARY</span><p>{rule.deploymentBoundary}</p></div>
-              </article>
-            ))}
-            <button className="primary-button full" onClick={onReplay}>Use this rule in the next pass <ArrowRight size={17} /></button>
+          <div className="preview-map">
+            <svg viewBox="0 0 720 360" role="img" aria-label="Route preview from Cremorne Digital Hub to East Richmond">
+              <path className="preview-road" d="M20 80 L700 80 M90 10 L90 340 M270 10 L270 340 M510 10 L510 340 M20 235 L700 235" />
+              <path className="preview-block" d="M115 105h125v102H115z M300 105h180v102H300z M535 105h130v102H535z M115 260h125v62H115z M300 260h180v62H300z M535 260h130v62H535z" />
+              <path className="preview-route preview-route--a" d="M70 285 C180 248 210 165 330 170 S510 236 650 65" />
+              <path className="preview-route preview-route--b" d="M70 285 C170 260 245 240 345 226 S530 148 650 65" />
+              <path className="preview-route preview-route--c" d="M70 285 C155 195 230 125 350 130 S530 120 650 65" />
+              <circle cx="70" cy="285" r="10" className="preview-origin" /><circle cx="650" cy="65" r="10" className="preview-destination" />
+              <g className="preview-trees"><circle cx="208" cy="125" r="9" /><circle cx="350" cy="110" r="11" /><circle cx="455" cy="120" r="8" /><circle cx="565" cy="100" r="10" /></g>
+            </svg>
+            <div className="preview-map__label">Public routes + tree canopy + predicted demand</div>
           </div>
-        )}
-      </aside>
-    </div>
+          <div className="preview-decision">
+            <p className="mini-label">MIA · 4:10 PM</p><h3>Lower UV is required.</h3>
+            <div className="preview-route-card is-best"><span>Canopy alternative</span><strong>9 min</strong><small>28% canopy-adjacent · 18 places remain</small></div>
+            <div className="preview-route-card is-blocked"><span>Direct route</span><strong>Filtered</strong><small>Stored high-UV exception</small></div>
+            <div className="preview-evidence"><BookOpenCheck size={17} /> Memory changed this decision</div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mechanism wrap" id="how">
+        <div className="section-intro"><p className="eyebrow">ONE OPERATING LOOP</p><h2>From scattered signals to a better next decision.</h2></div>
+        <div className="mechanism__rail">
+          <article><span>01</span><Activity /><h3>See the state</h3><p>Weather, public movement baselines, route geometry and participating capacity.</p></article><ArrowRight className="rail-arrow" />
+          <article><span>02</span><CircleGauge /><h3>Predict the pinch</h3><p>Estimate demand, exposure and remaining capacity at the time of use.</p></article><ArrowRight className="rail-arrow" />
+          <article><span>03</span><Layers3 /><h3>Match what is usable</h3><p>Access, time and functional needs determine the eligible set.</p></article><ArrowRight className="rail-arrow" />
+          <article><span>04</span><BrainCircuit /><h3>Measure, then remember</h3><p>Outcomes become local rules, including the boundary where success failed.</p></article>
+        </div>
+      </section>
+
+      <section className="aha wrap" id="proof">
+        <div className="section-intro section-intro--center"><p className="eyebrow">THE LEARNING MOMENT</p><h2>A result can look successful—until you see who carried the cost.</h2></div>
+        <div className="aha__story">
+          <article className="story-card">
+            <img src="/illustrations/mia-before.png" alt="Mia facing a hot crowded route" /><span className="story-step">FIRST PASS</span><h3>Route B looks best.</h3>
+            <div className="story-metrics"><strong>−20%</strong> crowding <strong>−7%</strong> walking time</div>
+          </article>
+          <div className="aha__turn"><span>WHO DID WE MISS?</span><ArrowRight /></div>
+          <article className="story-card story-card--reveal">
+            <div className="cohort-alert"><Sun /><div><strong>+40%</strong><span>UV exposure · low-UV cohort</span></div></div>
+            <div className="cohort-alert"><Route /><div><strong>+15%</strong><span>travel friction · mobility cohort</span></div></div>
+            <span className="story-step">MEASURED · SYNTHETIC MVP OUTPUT</span><h3>Success has a boundary.</h3>
+          </article>
+          <div className="aha__turn"><span>MEMORY WRITES THE EXCEPTION</span><ArrowRight /></div>
+          <article className="story-card">
+            <img src="/illustrations/mia-after.png" alt="Mia receiving a lower UV route after Memory retrieves the exception" /><span className="story-step">NEXT PASS</span><h3>Cremorne has seen this before.</h3>
+            <div className="memory-rule">High UV + low-UV need → filter Route B</div>
+          </article>
+        </div>
+        <p className="synthetic-note">Run this controlled experiment, inspect the backend decision trace, store the exception and replay the same conditions.</p>
+      </section>
+
+      <section className="landing-cta"><div className="wrap landing-cta__inner"><div><p className="eyebrow">WORKING PROTOTYPE</p><h2>Use what Cremorne already has.<br />Make the next decision better.</h2></div><button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try the product <ArrowRight size={19} /></button></div></section>
+    </main>
   )
 }
 
-function WorkspaceModal({ onClose }: { onClose: () => void }) {
-  const [selected, setSelected] = useState('studio')
-  const rooms = [
-    { id: 'internal', name: 'Own tenancy · Room 4', seats: 4, hybrid: true, access: 'OWN', status: 'Too small' },
-    { id: 'studio', name: 'CDH · Studio 2', seats: 8, hybrid: true, access: 'CDH', status: 'Best eligible' },
-    { id: 'partner', name: 'Partner · Boardroom', seats: 10, hybrid: true, access: 'PARTNER', status: 'Poor acoustics in Memory' },
+function useWeather() {
+  const [weather, setWeather] = useState({ temperature: 31, uvIndex: 8.2, source: 'Scenario fallback' })
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=-37.83&longitude=144.995&hourly=temperature_2m,uv_index&forecast_days=2&timezone=Australia%2FSydney', { signal: controller.signal })
+      .then((response) => response.json()).then((data) => {
+        const index = data.hourly?.time?.findIndex((value: string) => value.endsWith('T16:00')) ?? -1
+        if (index >= 0) setWeather({ temperature: Number(data.hourly.temperature_2m[index]), uvIndex: Number(data.hourly.uv_index[index]), source: '16:00 forecast · Open-Meteo' })
+      }).catch(() => undefined)
+    return () => controller.abort()
+  }, [])
+  return weather
+}
+
+function StatusChip({ type, children }: { type: 'live' | 'public' | 'model' | 'gap'; children: React.ReactNode }) {
+  return <span className={`status-chip status-chip--${type}`}>{children}</span>
+}
+
+function ProductApp() {
+  const [view, setView] = useState<AppView>('worker')
+  const [memory, setMemory] = useState<MemoryRule[]>(() => loadMemory())
+  const weather = useWeather()
+  const nav = [
+    { id: 'worker' as const, label: 'Worker map', icon: MapIcon }, { id: 'lab' as const, label: 'Precinct lab', icon: FlaskConical },
+    { id: 'spaces' as const, label: 'Spaces', icon: Building2 }, { id: 'memory' as const, label: 'Memory', icon: BrainCircuit },
   ]
   return (
-    <div className="overlay workspace-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="workspace-modal">
-        <button className="icon-close" onClick={onClose} aria-label="Close workspace example"><X /></button>
-        <div className="workspace-heading">
-          <span className="section-kicker">SAME MEMORY · DIFFERENT CAPACITY</span>
-          <h3>Find a six-person hybrid room.<br /><em>Tuesday · 2:00–3:00 pm</em></h3>
-          <p>The graph checks eligibility before preference: seats, hybrid equipment, accessibility and authorised access.</p>
-        </div>
-        <div className="workspace-body">
-          <div className="workspace-query">
-            <div><Users size={17} /><span>6 people</span></div>
-            <div><KeyRound size={17} /><span>Authorised access</span></div>
-            <div><ShieldCheck size={17} /><span>Step-free</span></div>
-            <div><Workflow size={17} /><span>Hybrid equipment</span></div>
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <Brand dark />
+        <nav aria-label="Product">{nav.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'is-active' : ''} onClick={() => setView(id)}><Icon size={19} /><span>{label}</span></button>)}</nav>
+        <div className="app-sidebar__memory"><span className={memory.length ? 'memory-pulse is-active' : 'memory-pulse'} /><div><strong>{memory.length ? 'Memory active' : 'Memory empty'}</strong><small>{memory.length} local rule{memory.length === 1 ? '' : 's'}</small></div></div>
+        <a className="back-link" href={PATHS.landing}>About the project <ExternalLink size={14} /></a>
+      </aside>
+      <div className="app-main">
+        <header className="app-topbar">
+          <div className="app-topbar__mobile"><Brand dark /></div>
+          <div className="signal-strip">
+            <span><ThermometerSun size={16} /><strong>{weather.temperature.toFixed(1)}°</strong><StatusChip type={weather.source.includes('Open-Meteo') ? 'live' : 'model'}>{weather.source}</StatusChip></span>
+            <span><Sun size={16} /><strong>UV {weather.uvIndex.toFixed(1)}</strong><StatusChip type={weather.source.includes('Open-Meteo') ? 'live' : 'model'}>{weather.source.includes('Open-Meteo') ? 'FORECAST' : 'SCENARIO'}</StatusChip></span>
+            <span><Users size={16} /><strong>4,400 PM peak</strong><StatusChip type="public">DTP FY24–25</StatusChip></span>
           </div>
-          <div className="room-list">
-            {rooms.map((room) => {
-              const eligible = room.id !== 'internal'
-              return (
-                <button key={room.id} className={`${selected === room.id ? 'selected' : ''} ${!eligible ? 'ineligible' : ''}`} onClick={() => eligible && setSelected(room.id)}>
-                  <span className="room-icon"><Building2 /></span>
-                  <div><strong>{room.name}</strong><small>{room.seats} seats · Teams enabled · step-free</small></div>
-                  <span className={`room-status ${room.id === 'studio' ? 'best' : ''}`}>{room.status}</span>
-                </button>
-              )
-            })}
-          </div>
-          <div className="workspace-memory">
-            <MemoryStick size={20} />
-            <div><strong>Why Studio 2?</strong><p>Both external rooms pass the hard requirements. A comparable hybrid meeting recorded poor acoustic outcomes in the Boardroom, so Studio 2 ranks first.</p></div>
-          </div>
-        </div>
-        <div className="workspace-footer"><span>Capacity, not calendars.</span><strong>Owner-defined availability only</strong></div>
+          <button className="mini-button" onClick={() => setView('lab')}><Play size={15} /> Run experiment</button>
+        </header>
+        {view === 'worker' && <WorkerView weather={weather} memoryActive={memory.length > 0} onOpenLab={() => setView('lab')} />}
+        {view === 'lab' && <LabView memory={memory} setMemory={setMemory} weather={weather} onOpenMemory={() => setView('memory')} />}
+        {view === 'spaces' && <SpacesView />}
+        {view === 'memory' && <MemoryView memory={memory} onClear={() => { clearMemory(); setMemory([]) }} onOpenLab={() => setView('lab')} />}
       </div>
+      <nav className="mobile-nav" aria-label="Product mobile navigation">{nav.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'is-active' : ''} onClick={() => setView(id)}><Icon size={20} /><span>{label}</span></button>)}</nav>
     </div>
   )
 }
 
-export default App
+function WorkerView({ weather, memoryActive, onOpenLab }: { weather: { temperature: number; uvIndex: number }; memoryActive: boolean; onOpenLab: () => void }) {
+  const [destination, setDestination] = useState<DestinationId>('east-richmond')
+  const [need, setNeed] = useState<ProductNeed>('lower-uv')
+  const [departure, setDeparture] = useState('16:10')
+  const [showTrees, setShowTrees] = useState(true)
+  const workers = demandAtTime(destination, departure)
+  const routes = useMemo(() => evaluateProductRoutes({ destination, need, uvIndex: weather.uvIndex, workers, memoryActive }), [destination, need, weather.uvIndex, workers, memoryActive])
+  const [selectedId, setSelectedId] = useState<string>()
+  const selected = routes.find((route) => route.id === selectedId) ?? routes[0]
+  const noEligible = routes.every((route) => !route.eligible)
+  const station = productContext.places[destination]
+  useEffect(() => setSelectedId(undefined), [destination, need, memoryActive])
+  return (
+    <section className="workspace worker-workspace">
+      <div className="view-heading"><div><p className="view-kicker">WORKER DECISION</p><h1>Find capacity that fits the person and the moment.</h1></div><div className="evidence-legend"><StatusChip type="live">LIVE</StatusChip><StatusChip type="public">PUBLIC BASELINE</StatusChip><StatusChip type="model">MODELLED</StatusChip></div></div>
+      <div className="worker-grid">
+        <div className="route-planner">
+          <div className="planner-fields">
+            <label><span>From</span><select value="cdh" disabled><option value="cdh">Cremorne Digital Hub</option></select></label>
+            <label><span>To</span><select value={destination} onChange={(event) => setDestination(event.target.value as DestinationId)}><option value="east-richmond">East Richmond Station</option><option value="richmond">Richmond Station</option></select></label>
+            <label><span>Leave at</span><input type="time" value={departure} onChange={(event) => setDeparture(event.target.value)} /></label>
+          </div>
+          <div className="need-selector" role="group" aria-label="Route need">
+            <button className={need === 'lower-uv' ? 'is-selected' : ''} onClick={() => setNeed('lower-uv')}><Sun size={17} /> Lower UV</button>
+            <button className={need === 'fastest' ? 'is-selected' : ''} onClick={() => setNeed('fastest')}><Route size={17} /> Fastest</button>
+            <button className={need === 'step-free' ? 'is-selected' : ''} onClick={() => setNeed('step-free')}><ShieldAlert size={17} /> Step-free</button>
+          </div>
+          {noEligible ? (
+            <div className="coverage-gap" role="alert"><ShieldAlert /><div><span>Evidence gap—not a recommendation</span><h3>No verified step-free route in the current dataset.</h3><p>Crossing, kerb and gradient data must be validated before this need can be safely served.</p></div></div>
+          ) : (
+            <div className="route-list" aria-live="polite">{routes.map((route) => (
+              <button key={route.id} className={`route-option ${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`} onClick={() => setSelectedId(route.id)}>
+                <div className="route-option__top"><span>{route.recommended ? 'RECOMMENDED' : route.eligible ? 'ELIGIBLE' : 'FILTERED'}</span><strong>{route.durationMin} min</strong></div><h3>{route.name}</h3>
+                <div className="route-option__metrics"><span><Trees size={14} /> {route.canopyAdjacentPct}% canopy</span><span><Users size={14} /> {Math.max(0, route.remainingCapacity)} remain</span><span><Sun size={14} /> exposure {route.exposureIndex}</span></div><p>{route.reasons[0]}</p>
+              </button>))}</div>
+          )}
+        </div>
+        <div className="map-stage">
+          <CremorneMap routes={routes} selectedId={selected?.id} onSelect={setSelectedId} showTrees={showTrees} />
+          <div className="map-toolbar"><button className={showTrees ? 'is-on' : ''} onClick={() => setShowTrees((value) => !value)}><Trees size={16} /> Urban trees</button><span>{station.pmPeakEntries?.toLocaleString()} PM-peak station entries</span></div>
+          <div className="map-source">Route geometry © OpenStreetMap via Valhalla · trees © State of Victoria</div>
+        </div>
+        <aside className="decision-panel">
+          {noEligible ? <><p className="mini-label">CURRENT DECISION</p><h2>Hold the recommendation.</h2><p className="decision-summary">The system exposes the missing evidence instead of turning an unverified route into false certainty.</p><StatusChip type="gap">WHO THIS DATA DOES NOT YET SERVE</StatusChip></> : <>
+            <p className="mini-label">BEST ELIGIBLE OPTION</p><h2>{selected.name}</h2><p className="decision-summary">Arrive in {selected.durationMin} minutes with an estimated exposure index of {selected.exposureIndex}.</p>
+            <div className="decision-number"><strong>{selected.durationMin}</strong><span>minutes</span></div>
+            <div className="decision-bars"><label><span>Modelled load at arrival</span><strong>{selected.predictedLoad}/{selected.capacity}</strong><i><b style={{ width: `${Math.min(100, selected.predictedLoad / selected.capacity * 100)}%` }} /></i></label><label><span>Canopy-adjacent geometry</span><strong>{selected.canopyAdjacentPct}%</strong><i><b className="green" style={{ width: `${selected.canopyAdjacentPct}%` }} /></i></label></div>
+            <ul className="decision-reasons">{selected.reasons.map((reason) => <li key={reason}><Check size={15} />{reason}</li>)}</ul>
+            {memoryActive ? <div className="memory-impact"><BrainCircuit size={18} /><span><strong>Memory checked</strong> against one measured local exception.</span></div> : <button className="memory-empty-cta" onClick={onOpenLab}><Sparkles size={17} /> Run the experiment to create the first local rule</button>}
+          </>}
+          <details className="evidence-details"><summary>How this was calculated</summary><p>Geometry and trees are public evidence. Arrival load, safe capacity and exposure are prototype estimates. Step-free status remains unverified.</p></details>
+        </aside>
+      </div>
+    </section>
+  )
+}
+
+function LoadBar({ label, values }: { label: string; values: [number, number, number] }) {
+  const total = values.reduce((sum, value) => sum + value, 0)
+  return <div className="load-bar"><div><span>{label}</span><strong>{total} workers</strong></div><div className="load-bar__track" aria-label={`${label} route distribution`}><i className="route-a" style={{ width: `${values[0] / total * 100}%` }}>A {values[0]}</i><i className="route-b" style={{ width: `${values[1] / total * 100}%` }}>B {values[1]}</i><i className="route-c" style={{ width: `${values[2] / total * 100}%` }}>C {values[2]}</i></div></div>
+}
+
+function LabView({ memory, setMemory, weather, onOpenMemory }: { memory: MemoryRule[]; setMemory: (rules: MemoryRule[]) => void; weather: { uvIndex: number }; onOpenMemory: () => void }) {
+  const [workers, setWorkers] = useState(300)
+  const [uv, setUv] = useState(Math.max(8.2, weather.uvIndex))
+  const [phase, setPhase] = useState<LabPhase>(memory.length ? 'stored' : 'ready')
+  const [apiStatus, setApiStatus] = useState<'idle' | 'connected' | 'local'>('idle')
+  const simulation = simulateScenario(workers, 42)
+  const baseline: [number, number, number] = [simulation.routeLoads.A, simulation.routeLoads.B, simulation.routeLoads.C]
+  const memoryAware: [number, number, number] = [Math.round(workers * 0.3), Math.round(workers * 0.36), workers - Math.round(workers * 0.3) - Math.round(workers * 0.36)]
+  async function runExperiment() {
+    setPhase('measured')
+    try { const response = await fetch(`/api/decision?need=standard&uv=${uv}&workers=${workers}`); if (!response.ok || !response.headers.get('content-type')?.includes('json')) throw new Error(); await response.json(); setApiStatus('connected') } catch { setApiStatus('local') }
+  }
+  function storeException() { const rules = saveRule(FIRST_EXCEPTION); setMemory(rules); setPhase('stored') }
+  return (
+    <section className="workspace lab-workspace">
+      <div className="view-heading"><div><p className="view-kicker">PRECINCT LAB</p><h1>Run the same day twice. Change only the decision logic.</h1></div><StatusChip type="model">CONTROLLED SYNTHETIC EXPERIMENT</StatusChip></div>
+      <div className="lab-controls">
+        <label><span>Workers in scenario <strong>{workers}</strong></span><input type="range" min="100" max="500" step="20" value={workers} onChange={(event) => setWorkers(Number(event.target.value))} /></label>
+        <label><span>UV index <strong>{uv.toFixed(1)}</strong></span><input type="range" min="3" max="12" step="0.1" value={uv} onChange={(event) => setUv(Number(event.target.value))} /></label>
+        <button className="button button--ink" onClick={runExperiment}><Play size={17} /> Run same conditions</button>
+      </div>
+      <div className="lab-grid">
+        <div className="experiment-stage">
+          <div className="experiment-map">
+            <svg viewBox="0 0 780 340" role="img" aria-label="Synthetic route allocation experiment">
+              <path className="lab-road" d="M80 285 C210 230 275 195 395 168 S590 130 710 60" /><path className="lab-road lab-road--alt" d="M80 285 C205 170 300 110 420 120 S590 108 710 60" /><path className="lab-road lab-road--access" d="M80 285 C210 278 310 255 420 225 S610 155 710 60" />
+              <g className="lab-buildings"><rect x="160" y="245" width="80" height="55" /><rect x="300" y="140" width="95" height="65" /><rect x="485" y="65" width="90" height="70" /></g>
+              <g className="lab-people">{Array.from({ length: 30 }).map((_, index) => <circle key={index} cx={90 + index * 18} cy={276 - index * 6.2 + (index % 3) * 8} r="4" />)}</g>
+              <circle className="lab-sun" cx="675" cy="42" r="22" /><text x="640" y="92">UV {uv.toFixed(1)}</text><text x="82" y="320">CDH / Church St</text><text x="500" y="316">Same demand · same seed · same conditions</text>
+            </svg>
+            <div className="experiment-stage__status"><span className={phase !== 'ready' ? 'is-done' : 'is-active'}>1 Run</span><ChevronRight /><span className={phase === 'measured' ? 'is-active' : phase === 'stored' || phase === 'replayed' ? 'is-done' : ''}>2 Measure</span><ChevronRight /><span className={phase === 'stored' ? 'is-active' : phase === 'replayed' ? 'is-done' : ''}>3 Remember</span><ChevronRight /><span className={phase === 'replayed' ? 'is-active' : ''}>4 Replay</span></div>
+          </div>
+          <div className="comparison">
+            <article><header><div><span>FIRST PASS</span><h2>Optimise the average</h2></div><StatusChip type="model">BASELINE</StatusChip></header><LoadBar label="Route allocation" values={baseline} /><div className="metric-pair"><div className="positive"><strong>−20%</strong><span>peak crowding</span></div><div className="positive"><strong>−7%</strong><span>walking time</span></div></div><div className={`hidden-cost ${phase === 'ready' ? 'is-covered' : ''}`}><div><Sun /><strong>+40%</strong><span>UV exposure<br />low-UV cohort</span></div><div><Route /><strong>+15%</strong><span>travel friction<br />mobility cohort</span></div>{phase === 'ready' && <button onClick={runExperiment}>Measure who carried the cost</button>}</div></article>
+            <article className="comparison__memory"><header><div><span>NEXT PASS</span><h2>Use the learned boundary</h2></div><StatusChip type={memory.length ? 'live' : 'model'}>{memory.length ? 'MEMORY ON' : 'WAITING'}</StatusChip></header><LoadBar label="Capacity-aware allocation" values={memoryAware} /><div className="metric-pair"><div className="positive"><strong>−16%</strong><span>peak crowding</span></div><div className="positive"><strong>−5%</strong><span>walking time</span></div></div><div className="guardrail-result"><Check /><div><strong>Low-UV guardrail passes</strong><span>Route B is removed only where the exception applies.</span></div></div>{!memory.length && phase === 'measured' && <button className="button button--accent button--block" onClick={storeException}><Database size={17} /> Store measured exception</button>}{memory.length && phase !== 'replayed' && <button className="button button--accent button--block" onClick={() => setPhase('replayed')}><RotateCcw size={17} /> Replay identical conditions</button>}{phase === 'replayed' && <div className="replay-payoff"><BrainCircuit /><div><span>EXCEPTION RETRIEVED BEFORE MATCHING</span><strong>Cremorne has seen this before.</strong></div></div>}</article>
+          </div>
+          <p className="lab-caption">Synthetic MVP output. The comparison holds demand, conditions and random seed constant.</p>
+        </div>
+        <aside className="backend-trace">
+          <div className="backend-trace__head"><div><ServerCog /><span><strong>Decision trace</strong><small>{apiStatus === 'connected' ? 'Serverless API connected' : apiStatus === 'local' ? 'Local engine fallback' : 'Ready to run'}</small></span></div><span className={`api-light ${apiStatus !== 'idle' ? 'is-on' : ''}`} /></div>
+          <div className="trace-flow"><div className={phase !== 'ready' ? 'is-active' : ''}><Activity /><span><strong>OBSERVE</strong><small>{workers} workers · UV {uv.toFixed(1)}</small></span></div><i /><div className={phase !== 'ready' ? 'is-active' : ''}><CircleGauge /><span><strong>PREDICT</strong><small>load at time of use</small></span></div><i /><div className={phase !== 'ready' ? 'is-active' : ''}><Layers3 /><span><strong>MATCH</strong><small>capacity + constraints</small></span></div><i /><div className={phase !== 'ready' ? 'is-active' : ''}><Activity /><span><strong>MEASURE</strong><small>aggregate + cohort effect</small></span></div><i /><div className={memory.length ? 'is-active' : ''}><BrainCircuit /><span><strong>REMEMBER</strong><small>exception + boundary</small></span></div></div>
+          <div className="payload-card"><p>MEMORY WRITE</p><code>{`context: high UV + congestion\nintervention: Route B\noutcome: crowding −20%\nexception: low-UV exposure +40%\nboundary: UV ≥ 7\nconfidence: 0.82`}</code></div>
+          <div className="backend-actions"><button onClick={onOpenMemory} disabled={!memory.length}>Inspect stored rule <ArrowRight size={15} /></button><a href="/api/decision?need=low-uv&memory=1" target="_blank" rel="noreferrer">Open API JSON <ExternalLink size={14} /></a></div>
+        </aside>
+      </div>
+    </section>
+  )
+}
+
+function SpacesView() {
+  const [people, setPeople] = useState(6), [hybrid, setHybrid] = useState(true), [accessible, setAccessible] = useState(true)
+  const results = useMemo(() => findSpaces({ people, requireHybrid: hybrid, requireAccessible: accessible }), [people, hybrid, accessible])
+  return <section className="workspace spaces-workspace">
+    <div className="view-heading"><div><p className="view-kicker">SAME MEMORY · DIFFERENT CAPACITY</p><h1>Find a room that is usable—not merely empty.</h1></div><StatusChip type="public">CDH VENUE CAPACITY</StatusChip></div>
+    <div className="space-query"><div className="space-query__sentence">I need a room for <input aria-label="People" type="number" min="2" max="80" value={people} onChange={(event) => setPeople(Number(event.target.value))} /> people</div><label><input type="checkbox" checked={hybrid} onChange={(event) => setHybrid(event.target.checked)} /> Hybrid meeting</label><label><input type="checkbox" checked={accessible} onChange={(event) => setAccessible(event.target.checked)} /> Accessible venue</label></div>
+    <div className="space-grid">{results.map((space) => <article key={space.id} className={`space-card ${space.eligible ? 'is-eligible' : ''}`}><div className="space-card__visual"><Building2 /><span>{space.mode}</span><b>{space.capacity}</b><small>seated capacity</small></div><div className="space-card__body"><span className="space-status">{space.eligible ? 'ELIGIBLE' : 'OUTSIDE ELIGIBLE SET'}</span><h2>{space.name}</h2><div className="facility-list">{space.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{space.eligible ? <><p>Owner-provided demo window</p><strong>{space.availability[0]}</strong></> : <ul>{space.blockers.map((blocker) => <li key={blocker}><X size={14} /> {blocker}</li>)}</ul>}</div></article>)}</div>
+    <div className="space-principle"><Layers3 /><div><strong>Capacity discovery without calendar exposure.</strong><span>The prototype shares venue capability, access class and a bounded availability window. Meeting titles, attendees and internal calendars stay outside the graph.</span></div></div>
+  </section>
+}
+
+function MemoryView({ memory, onClear, onOpenLab }: { memory: MemoryRule[]; onClear: () => void; onOpenLab: () => void }) {
+  return <section className="workspace memory-workspace">
+    <div className="view-heading"><div><p className="view-kicker">LOCAL OPERATING MEMORY</p><h1>What Cremorne learned—and where it applies.</h1></div>{memory.length > 0 && <button className="mini-button" onClick={onClear}><RotateCcw size={15} /> Reset demo memory</button>}</div>
+    {memory.length === 0 ? <div className="empty-memory"><div className="empty-memory__orb"><BrainCircuit /></div><h2>No measured rule has been stored yet.</h2><p>Run the controlled route experiment, reveal the cohort-level failure, then write its deployment boundary.</p><button className="button button--accent" onClick={onOpenLab}>Go to Precinct Lab <ArrowRight size={17} /></button></div> : memory.map((rule) => <div className="memory-record" key={rule.id}><div className="memory-record__hero"><span>ACTIVE OPERATING RULE</span><h2>Route B can reduce congestion—except when high UV conflicts with a low-UV requirement.</h2><p>Measured local evidence now changes eligibility before preference ranking.</p></div><div className="memory-graph" aria-label="Memory evidence graph"><div><small>CONTEXT</small><strong>Church St · UV ≥ {rule.context.uvMin}</strong><span>crowding ≥ {rule.context.crowdingMin}</span></div><ChevronRight /><div><small>INTERVENTION</small><strong>Redistribute via Route B</strong><span>generic first pass</span></div><ChevronRight /><div><small>OUTCOME</small><strong>−20% crowding</strong><span>−7% walking time</span></div><ChevronRight /><div className="memory-graph__exception"><small>EXCEPTION</small><strong>+40% UV exposure</strong><span>low-UV cohort</span></div><ChevronRight /><div className="memory-graph__rule"><small>BOUNDARY</small><strong>Filter for low-UV need</strong><span>when UV ≥ 7</span></div></div><div className="memory-record__foot"><span><Database /> Persistent in this browser</span><span><CircleGauge /> Confidence {(rule.confidence * 100).toFixed(0)}%</span><span><BookOpenCheck /> Reused only in comparable context</span></div></div>)}
+    <div className="privacy-strip"><strong>Share constraints, not diagnoses.</strong><span>Share capacity, not calendars.</span><span>Store outcomes, not identities.</span></div>
+    <section className="data-sources"><h2>Evidence behind this prototype</h2><div>{productContext.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer"><Database /><span><strong>{source.label}</strong><small>{source.licence}</small></span><ExternalLink /></a>)}</div></section>
+  </section>
+}
+
+export default function App() { return window.location.pathname.startsWith(PATHS.product) ? <ProductApp /> : <Landing /> }

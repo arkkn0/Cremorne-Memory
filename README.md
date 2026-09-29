@@ -1,108 +1,83 @@
 # Cremorne Memory
 
-**A context-aware capacity and learning layer for the one-square-kilometre precinct.**
+**A context-aware capacity and learning layer for Cremorne.**
 
-Cremorne Memory predicts capacity mismatches, matches workers with genuinely usable capacity, and turns every measured intervention into reusable local operating knowledge.
+Cremorne Memory combines a public-facing product story with a working decision prototype. Workers can compare route capacity under a functional need; CDH can run a controlled intervention, measure aggregate and cohort outcomes, store the boundary of success, and replay the same context with that evidence active.
 
-**Live prototype:** [temporary-fleet-apogee-phdglzp.vercel.app](https://temporary-fleet-apogee-phdglzp.vercel.app)  
-**Demo QR:** [`public/qr/cremorne-memory-demo.png`](public/qr/cremorne-memory-demo.png)
+## Product surfaces
 
-The working prototype follows one end-to-end story:
+- `/` — concise product landing page and illustrated learning story
+- `/app` — working product with four connected views:
+  - **Worker map:** real pedestrian geometry, Victorian tree data, station-demand baseline, weather forecast and modelled arrival capacity
+  - **Precinct lab:** baseline versus Memory-aware controlled simulation
+  - **Spaces:** the same eligibility model applied to meeting capacity
+  - **Memory:** inspectable local operating rule, deployment boundary and evidence sources
+- `/api/decision` — deterministic serverless decision endpoint used by the demonstrator
+- `/api/health` — deployment health endpoint
 
-1. A high-UV, high-crowding Church Street scenario is observed.
-2. Generic first-pass logic selects the fast route.
-3. A controlled synthetic intervention measures the aggregate result and the outcome distribution.
-4. The local exception is written to persistent browser Memory.
-5. The same context is replayed for Mia, whose hard requirement is low UV exposure.
-6. The stored exception changes eligibility before preferences are ranked.
-7. The same capacity and Memory model is tested on a six-person hybrid room query.
+No account or login is required.
 
-## Product model
+## What is measured
 
-```text
-Demand × hard constraints × time × context → eligible capacity
-```
+The demonstrator holds demand, conditions and seed constant, then compares two decision logics:
 
-A Capacity Unit is a route, passage, room or time window evaluated under defined operating conditions. Empty, available and usable are deliberately different states.
+1. a first pass that optimises aggregate outcomes;
+2. a Memory-aware pass that applies a previously measured exception before matching.
 
-The decision loop is:
+The current intervention outputs are synthetic MVP measurements and are labelled that way in the product. They demonstrate the evaluation mechanism; they are not presented as field-validated impact.
 
-```text
-Observe → Predict → Retrieve → Match → Explain → Choose/Test → Measure → Learn
-```
+## Evidence model
 
-The MVP keeps the three forms of intelligence separate:
+The interface distinguishes three kinds of evidence:
 
-- **Prediction** estimates route state at the expected time of use.
-- **Constraints** determine which options are eligible.
-- **Memory** qualifies predictions with measured local outcomes and their applicability boundaries.
+| Status | Used for |
+| --- | --- |
+| Forecast / live | Open-Meteo temperature and UV when available |
+| Public baseline | DTP station patronage, Vicmap urban trees, OpenStreetMap pedestrian geometry, public CDH venue capacity |
+| Modelled / synthetic | minute-level movement demand, route capacity, exposure estimate, intervention outcome and demonstration availability |
 
-## What is working
+If a functional requirement cannot be supported by the available evidence, the product exposes a coverage gap. For example, step-free routing is withheld until kerb, crossing and gradient evidence is verified.
 
-- Responsive worker and precinct experience
-- Simplified interactive Cremorne capacity map
-- Deterministic 100–500 worker scenario engine
-- First-pass and Memory-aware route ranking
-- Hard-constraint filtering for low-UV and step-free needs
-- Remaining-capacity-aware scoring
-- Outcome distribution across represented functional needs
-- Persistent Memory write and retrieval using browser storage
-- Structured exception, confidence and deployment-boundary record
-- Controlled baseline replay using the same demand, conditions and seed
-- Workspace-capacity generalisation
-- Live temperature adapter using Open-Meteo, with an offline scenario fallback
-- Deployable decision API (`/api/decision`) exposing the same deterministic eligibility and ranking engine
-- Health endpoint (`/api/health`)
-- Automated decision-engine tests
+## Data sources
 
-All prototype impact values are explicitly labelled as synthetic. The application does not claim field-validated performance.
+- [DTP annual metropolitan train station patronage FY24–25](https://opendata.transport.vic.gov.au/dataset/annual-metropolitan-train-station-patronage-station-entries)
+- [Vicmap Vegetation — Tree Urban](https://discover.data.vic.gov.au/dataset/vicmap-vegetation-tree-urban-rest-api)
+- [OpenStreetMap](https://www.openstreetmap.org/copyright) route geometry via Valhalla
+- [Cremorne Digital Hub venue information](https://www.cremornedigitalhub.com.au/events/)
+- [Open-Meteo](https://open-meteo.com/) hourly forecast adapter
+
+Raw public inputs are retained under `public/data/raw/`. Run `npm run data:build` to reproduce the compact product context written to `public/data/cremorne-context.json` and `src/cremorne-context.json`.
 
 ## Architecture
 
 ```text
-Public / synthetic inputs
-        ↓
-Live precinct state
-        ↓
-Lightweight prediction
-        ↓
-Capacity Graph + deterministic constraint engine
-        ↓                         ↑
-Worker / precinct decision ← local Memory retrieval
-        ↓
-Outcome measurement
-        ↓
-Operating rule: context + outcome + exception + boundary + confidence
-        └─────────────────────────↺
+Public / forecast / participating inputs
+                    ↓
+            precinct state at time of use
+                    ↓
+        Capacity Graph + hard constraints
+                    ↓                 ↑
+           eligible options ← Memory retrieval
+                    ↓
+              human choice / test
+                    ↓
+       aggregate + cohort measurement
+                    ↓
+ context + outcome + exception + boundary
+                    └─────────────────↺
 ```
 
-The hackathon build packages this architecture as typed TypeScript modules so the complete proof runs without external credentials or infrastructure. Browser storage provides visible, persistent Memory for the demo. A production deployment can replace that adapter with Neo4j while preserving the same `MemoryRule` model and deterministic eligibility layer.
+The prototype uses typed TypeScript modules and browser persistence so the complete loop is visible without external credentials. The serverless endpoint exposes the same deterministic rule logic. A production graph store can replace the persistence adapter without changing the decision model.
 
-## Repository structure
-
-```text
-src/
-  App.tsx          Product experience and connected views
-  domain.ts       Capacity, scenario, outcome and Memory types
-  engine.ts       Prediction, constraint, matching and simulation logic
-  memory.ts       Persistent Memory adapter
-  engine.test.ts  Behavioural proof of the key decision change
-  styles.css      Responsive visual system
-public/
-  illustrations/  Original hand-drawn precinct and Mia story assets
-api/
-  decision.ts     Serverless decision endpoint
-  health.ts       Deployment health endpoint
-```
-
-## Run locally
+## Run
 
 ```bash
 npm install
+npm run data:build
 npm run dev
 ```
 
-Open `http://localhost:4173`.
+Open `http://localhost:4173` and select **Try the product**.
 
 ## Verify
 
@@ -111,45 +86,6 @@ npm test
 npm run build
 ```
 
-## Evidence and data maturity
+## Deployment
 
-The current network, pedestrian demand, shade values, route exposure and outcomes are synthetic prototype inputs. Live temperature is fetched from the public Open-Meteo endpoint when available. The interface distinguishes synthetic output from live context.
-
-The deployment path is deliberately staged:
-
-1. One hotspot, three routes, one participating covered asset and a small opt-in cohort.
-2. Anonymous pedestrian counts, temporary environmental measures and route travel-time observations.
-3. Additional participating passages, workspaces and repeated local outcomes.
-
-## Privacy model
-
-- Share constraints, not diagnoses.
-- Share capacity, not calendars.
-- Store outcomes, not identities.
-
-Mia's profile stores `low UV required`; it does not require an albinism diagnosis.
-
-## Open-source implementation references
-
-The MVP adapts implementation patterns—not source code or visual identity—from public projects:
-
-- [ShadeRouteNavigation](https://github.com/SY0604/ShadeRouteNavigation): time-specific shade and multi-objective pedestrian routing.
-- [ShadowPath](https://github.com/ak-asu/shadowpath): transparent shade-aware route comparison and accessibility gates.
-- [AeroTwin](https://github.com/helsingin/aerotwin): deterministic TypeScript simulation and replayable operating state.
-- [Neo4j recommendations example](https://github.com/neo4j-graph-examples/recommendations): graph-neighbourhood retrieval pattern.
-
-## Technology
-
-React · TypeScript · Vite · deterministic constraint and ranking engine · browser-local persistent Memory · Open-Meteo adapter · Vitest · Vercel
-
-### Decision API example
-
-```text
-/api/decision?need=low-uv&memory=1&uv=8.2&crowding=82&workers=300
-```
-
-The response exposes the eligible set, score, remaining capacity, explanation and retrieved Memory rule for each route.
-
-## Team
-
-Team Bubble · University of Melbourne 2026 FEIT Hackathon Festival
+The repository is configured for Vercel. Import the GitHub repository, keep the default Vite settings, and deploy. `/app` is rewritten to the single-page client while `/api/*` remains available to Vercel Functions.

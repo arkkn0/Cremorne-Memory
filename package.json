@@ -10,18 +10,22 @@
     "test": "node ./node_modules/vitest/vitest.mjs run",
     "test:watch": "node ./node_modules/vitest/vitest.mjs",
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
-    "qr": "node ./scripts/generate-qr.mjs"
+    "qr": "node ./scripts/generate-qr.mjs",
+    "data:build": "node ./scripts/build-cremorne-data.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "leaflet": "^1.9.4",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "react-leaflet": "^5.0.0",
     "typescript": "latest",
     "vite": "latest"
   },
   "devDependencies": {
     "@eslint/js": "latest",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "latest",
     "@types/qrcode": "^1.5.6",
     "@types/react": "latest",
