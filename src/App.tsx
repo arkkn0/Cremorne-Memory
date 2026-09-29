@@ -13,10 +13,11 @@ import {
   type DestinationId, type ProductNeed,
 } from './product'
 
-type ProductRole = 'worker' | 'operator'
+type ProductRole = 'demo' | 'worker' | 'operator'
 type WorkerTask = 'route' | 'space'
 type JourneyStage = 'setup' | 'results' | 'active' | 'feedback' | 'saved'
 type OperatorStage = 'detect' | 'testing' | 'compare' | 'saved'
+type DemoStage = 'scenario' | 'first-pass' | 'reveal' | 'remembered'
 type EngineStatus = 'ready' | 'running' | 'api' | 'local'
 
 const PATHS = { landing: '/', product: '/app' }
@@ -33,80 +34,46 @@ function Brand({ compact = false }: { compact?: boolean }) {
 }
 
 function Landing() {
-  const [flowStep, setFlowStep] = useState(0)
-  const flow = [
-    { label: 'Tell us', title: 'Low UV · arrive by 4:20', value: 'Need + destination + time', icon: Sun },
-    { label: 'Match', title: '3 routes → 2 usable', value: 'Capacity + hard requirements', icon: CircleGauge },
-    { label: 'Choose', title: 'Canopy route · 9 min', value: 'Clear trade-offs, your decision', icon: Navigation },
-    { label: 'Learn', title: 'Route B exception saved', value: 'Filtered before the next high-UV journey', icon: BrainCircuit },
-  ]
-  useEffect(() => {
-    const timer = window.setInterval(() => setFlowStep((step) => (step + 1) % flow.length), 2600)
-    return () => window.clearInterval(timer)
-  }, [flow.length])
-
-  const ActiveFlowIcon = flow[flowStep].icon
   return (
-    <main className="landing landing--clear">
+    <main className="landing landing-home">
       <header className="landing-nav wrap">
         <Brand />
         <nav className="landing-nav__links" aria-label="Landing navigation">
-          <a href="#how">How it works</a>
-          <button className="button button--ink" onClick={() => go(PATHS.product)}>Try it <ArrowRight size={17} /></button>
+          <button className="button button--ink" onClick={() => go(PATHS.product)}>Try the app <ArrowRight size={17} /></button>
         </nav>
       </header>
 
-      <section className="hero hero--clear wrap">
+      <section className="hero hero--product wrap">
         <div className="hero__copy">
-          <p className="eyebrow"><span className="live-dot" /> FOR CREMORNE WORKERS + OPERATORS</p>
-          <h1>A better next move through <em>Cremorne.</em></h1>
-          <p className="hero__lead">Workers get a route or room they can actually use. CDH measures what worked—and remembers where it failed—so the next decision starts smarter.</p>
+          <p className="eyebrow"><span className="live-dot" /> CREMORNE MEMORY</p>
+          <h1>Use the capacity <em>Cremorne already has.</em></h1>
+          <p className="hero__lead">A live decision layer that matches workers to genuinely usable routes and rooms—then remembers what worked, for whom and under which conditions.</p>
           <div className="hero__actions">
-            <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Plan a journey <ArrowRight size={19} /></button>
-            <a className="text-link" href="#how">See the 4-step flow <ChevronDown size={16} /></a>
-          </div>
-          <div className="hero-promise" aria-label="Example product outcome">
-            <span><Sun size={16} /> Low UV</span><ArrowRight size={15} /><strong>Canopy route · 9 min</strong><ArrowRight size={15} /><span><BrainCircuit size={16} /> Remembers exception</span>
+            <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try the 30-second demo <ArrowRight size={19} /></button>
+            <span className="no-login"><Check size={16}/> No login · starts immediately</span>
           </div>
         </div>
 
         <div className="hero__visual" aria-label="Cremorne with overloaded and spare capacity">
           <img src="/illustrations/cremorne-hero-unified.png" alt="A crowded exposed street beside a shaded passage and an underused meeting room" />
           <div className="hero-note hero-note--crowd">Overloaded now</div>
-          <div className="hero-note hero-note--route">Underused room</div>
-          <div className="hero-note hero-note--room">Shaded route</div>
+          <div className="hero-note hero-note--route">Underused capacity</div>
+          <div className="hero-note hero-note--room">Usable for Mia</div>
         </div>
       </section>
 
-      <section className="persona-bridge wrap" aria-label="Illustrative user perspective">
-        <div className="persona-bridge__mark"><Sun /></div>
-        <blockquote>“On a high-UV afternoon, the fastest route can be the one I can’t take. Show me a shaded route that still gets me there on time.”</blockquote>
-        <p><strong>Mia</strong><span>Cremorne worker with albinism · illustrative persona</span></p>
+      <section className="value-triad wrap" aria-label="How Cremorne Memory creates value">
+        <article><span><Activity/></span><div><strong>Live State</strong><p>See crowding, UV and capacity at the time of use.</p></div></article>
+        <article><span><CircleGauge/></span><div><strong>Capacity Graph</strong><p>Filter routes, rooms and time windows by real constraints.</p></div></article>
+        <article><span><BrainCircuit/></span><div><strong>Memory</strong><p>Turn measured outcomes into the next operating decision.</p></div></article>
       </section>
 
-      <section className="clear-flow" id="how">
-        <div className="wrap clear-flow__intro">
-          <div><p className="eyebrow">ONE CONTINUOUS EXPERIENCE</p><h2>Choose now. Measure what happened. Improve the next choice.</h2></div>
-          <p>The worker completes one task. The learning happens quietly behind it.</p>
-        </div>
-        <div className="wrap flow-player">
-          <div className="flow-player__rail" role="tablist" aria-label="How Cremorne Memory works">
-            {flow.map((item, index) => {
-              const Icon = item.icon
-              return <button key={item.label} className={flowStep === index ? 'is-active' : ''} onClick={() => setFlowStep(index)}><i>{index + 1}</i><span>{item.label}</span><Icon size={18} /></button>
-            })}
-          </div>
-          <div className="flow-player__stage" aria-live="polite">
-            <div className="flow-stage__icon"><ActiveFlowIcon /></div>
-            <span>STEP {flowStep + 1} · {flow[flowStep].label.toUpperCase()}</span>
-            <strong>{flow[flowStep].title}</strong>
-            <small>{flow[flowStep].value}</small>
-            <div className="flow-progress"><i style={{ width: `${(flowStep + 1) * 25}%` }} /></div>
-          </div>
+      <section className="landing-proof">
+        <div className="wrap landing-proof__inner">
+          <div><span>THE DIFFERENCE</span><strong>A forecast says what may happen.<br/>Memory changes what happens next.</strong></div>
+          <button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Try the app <ArrowRight size={19}/></button>
         </div>
       </section>
-
-      <section className="landing-cta"><div className="wrap landing-cta__inner"><div><p className="eyebrow">WORKING PROTOTYPE</p><h2>Start with one real task.</h2><p>No login required.</p></div><button className="button button--accent button--large" onClick={() => go(PATHS.product)}>Open Cremorne Memory <ArrowRight size={19} /></button></div></section>
     </main>
   )
 }
@@ -126,7 +93,7 @@ function useWeather() {
 }
 
 function ProductApp() {
-  const [role, setRole] = useState<ProductRole>('worker')
+  const [role, setRole] = useState<ProductRole>('demo')
   const [task, setTask] = useState<WorkerTask>('route')
   const [memory, setMemory] = useState<MemoryRule[]>(() => loadMemory())
   const weather = useWeather()
@@ -136,15 +103,94 @@ function ProductApp() {
       <header className="product-clear__header">
         <Brand />
         <div className="role-switch" role="group" aria-label="Choose product role">
-          <button className={role === 'worker' ? 'is-active' : ''} onClick={() => setRole('worker')}><Users size={16} /> Worker</button>
-          <button className={role === 'operator' ? 'is-active' : ''} onClick={() => setRole('operator')}><FlaskConical size={16} /> CDH operator</button>
+          <button className={role === 'demo' ? 'is-active' : ''} onClick={() => setRole('demo')}><Sparkles size={16} /> Live demo</button>
+          <button className={role === 'worker' ? 'is-active' : ''} onClick={() => setRole('worker')}><Users size={16} /> Worker app</button>
+          <button className={role === 'operator' ? 'is-active' : ''} onClick={() => setRole('operator')}><FlaskConical size={16} /> CDH lab</button>
         </div>
-        <div className="product-status"><span className={memory.length ? 'is-on' : ''}><BrainCircuit size={15} />{memory.length ? `${memory.length} local rule active` : 'No rule stored yet'}</span><a href={PATHS.landing}><Home size={17} /><span>Story</span></a></div>
+        <div className="product-status"><span className={role === 'demo' || memory.length ? 'is-on' : ''}>{role === 'demo' ? <><Sparkles size={15}/>Guided proof</> : <><BrainCircuit size={15}/>{memory.length ? `${memory.length} local rule active` : 'No rule stored yet'}</>}</span><a href={PATHS.landing}><Home size={17} /><span>Story</span></a></div>
       </header>
-      {role === 'worker'
-        ? <WorkerExperience task={task} setTask={setTask} weather={demoWeather} memoryActive={memory.length > 0} />
-        : <OperatorExperience weather={demoWeather} memory={memory} setMemory={setMemory} onSeeWorker={() => { setRole('worker'); setTask('route') }} />}
+      {role === 'demo' && <GuidedDemo setMemory={setMemory} onOpenWorker={() => { setRole('worker'); setTask('route') }} />}
+      {role === 'worker' && <WorkerExperience task={task} setTask={setTask} weather={demoWeather} memoryActive={memory.length > 0} />}
+      {role === 'operator' && <OperatorExperience weather={demoWeather} memory={memory} setMemory={setMemory} onSeeWorker={() => { setRole('worker'); setTask('route') }} />}
     </div>
+  )
+}
+
+function GuidedDemo({ setMemory, onOpenWorker }: {
+  setMemory: (memory: MemoryRule[]) => void
+  onOpenWorker: () => void
+}) {
+  const [stage, setStage] = useState<DemoStage>('scenario')
+  const result = useMemo(() => simulateScenario(300, 42), [])
+  const rememberAndRetry = () => {
+    setMemory(saveRule(FIRST_EXCEPTION))
+    setStage('remembered')
+  }
+  const progress = stage === 'scenario' ? 0 : stage === 'first-pass' ? 1 : stage === 'reveal' ? 2 : 3
+
+  return (
+    <main className={`guided-demo demo-${stage}`}>
+      <header className="demo-heading">
+        <div><span>30-SECOND LIVE PROOF</span><h1>Watch one measured outcome change the next decision.</h1></div>
+        <div className="demo-context"><span><Sun/>High UV · 8.2</span><span><Activity/>Crowding rising</span><span><Users/>300 workers</span></div>
+      </header>
+
+      <section className="demo-workbench">
+        <div className="demo-visual">
+          <div className="mia-chip"><div>M</div><span><small>MIA · 1 OF 300 WORKERS</small><strong>Low UV · arrive by 4:20</strong></span></div>
+          <svg viewBox="0 0 760 430" role="img" aria-label="Three route options changing across the Memory demonstration">
+            <g className="demo-buildings"><rect x="155" y="272" width="112" height="84"/><rect x="335" y="185" width="116" height="86"/><rect x="530" y="87" width="105" height="82"/></g>
+            <path className="demo-route route-a" d="M68 372 C190 312 272 270 365 236 S555 162 690 62"/>
+            <path className="demo-route route-b" d="M68 372 C185 184 315 106 470 128 S610 108 690 62"/>
+            <path className="demo-route route-c" d="M68 372 C205 388 326 350 451 289 S592 176 690 62"/>
+            <g className="demo-crowd">{Array.from({ length: 24 }).map((_, index) => <circle key={index} cx={88 + index * 21} cy={356 - index * 7 + (index % 3) * 9} r="5"/>)}</g>
+            <circle className="demo-origin" cx="68" cy="372" r="14"/><circle className="demo-target" cx="690" cy="62" r="14"/>
+          </svg>
+          <div className="route-tag route-tag-a"><i/>Route A <b>Accessible</b></div>
+          <div className="route-tag route-tag-b"><i/>Route B <b>{stage === 'remembered' ? 'Filtered' : stage === 'scenario' ? '7 min' : 'Selected'}</b></div>
+          <div className="route-tag route-tag-c"><i/>Shadow C <b>{stage === 'remembered' ? 'Eligible' : '82% shaded'}</b></div>
+          {stage === 'remembered' && <div className="memory-retrieved"><BrainCircuit/><span>MEMORY RETRIEVED<strong>High UV + low-UV need</strong></span></div>}
+        </div>
+
+        <aside className="demo-story" aria-live="polite">
+          {stage === 'scenario' && <>
+            <span className="step-kicker">1 · SAME SCENARIO</span>
+            <h2>Can Route B relieve the crowd?</h2>
+            <p>CDH first tests the precinct-wide result. Mia is one of 300 workers in the scenario.</p>
+            <div className="demo-route-list"><div><i className="a"/><strong>Route A</strong><span>9 min · step-free</span></div><div><i className="b"/><strong>Route B</strong><span>7 min · direct</span></div><div><i className="c"/><strong>Shadow C</strong><span>8 min · shaded</span></div></div>
+            <button className="primary-action" onClick={() => setStage('first-pass')}>Run aggregate test <Play size={18}/></button>
+          </>}
+          {stage === 'first-pass' && <>
+            <span className="step-kicker">2 · APPARENT SUCCESS</span>
+            <h2>Route B looks successful.</h2>
+            <div className="result-pair"><div><span>CROWDING</span><strong>{percentDelta(result.crowdingDelta)}</strong><small>better</small></div><div><span>WALK TIME</span><strong>{percentDelta(result.walkingDelta)}</strong><small>better</small></div></div>
+            <div className="apparent-winner"><Check/><span><small>BEST PRECINCT AVERAGE</small><strong>Route B · Direct</strong></span></div>
+            <button className="primary-action" onClick={() => setStage('reveal')}>Who did we miss? <ArrowRight size={18}/></button>
+          </>}
+          {stage === 'reveal' && <>
+            <span className="step-kicker coral">3 · MEASURE THE OUTCOME</span>
+            <h2>The average hid two failures.</h2>
+            <div className="demo-exceptions"><div><Sun/><span>LOW-UV COHORT<strong>Exposure {percentDelta(result.uvDeltaLowUv)}</strong></span></div><div><Navigation/><span>MOBILITY COHORT<strong>Friction {percentDelta(result.mobilityFrictionDelta)}</strong></span></div></div>
+            <p className="demo-insight">A successful average is not a safe universal rule.</p>
+            <button className="primary-action" onClick={rememberAndRetry}>Remember the exception <BrainCircuit size={18}/></button>
+          </>}
+          {stage === 'remembered' && <>
+            <span className="step-kicker">4 · NEXT DECISION</span>
+            <h2>Same day. Better eligible set.</h2>
+            <div className="remembered-choice blocked"><X/><span><small>ROUTE B</small><strong>Outside Mia’s eligible set</strong></span></div>
+            <div className="remembered-choice eligible"><Check/><span><small>SHADOW ROUTE C</small><strong>Eligible · lower exposure · on time</strong></span></div>
+            <div className="remembered-rule"><span>WHEN</span><strong>UV ≥ 7 + low-UV required</strong><span>THEN</span><strong>Filter Route B before ranking</strong></div>
+            <button className="primary-action" onClick={onOpenWorker}>Continue as Mia <ArrowRight size={18}/></button>
+            <button className="secondary-action" onClick={() => setStage('scenario')}>Replay the proof</button>
+          </>}
+        </aside>
+      </section>
+
+      <footer className="demo-footer">
+        <div className="demo-progress-line">{['Scenario', 'First pass', 'Reveal', 'Next decision'].map((label, index) => <span key={label} className={progress >= index ? 'is-on' : ''}><i>{progress > index ? <Check/> : index + 1}</i>{label}</span>)}</div>
+        <p><strong>Synthetic MVP output</strong> · same demand, UV and seed across the comparison</p>
+      </footer>
+    </main>
   )
 }
 

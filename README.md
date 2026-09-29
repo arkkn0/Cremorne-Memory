@@ -7,13 +7,14 @@ Cremorne Memory combines a public-facing product story with a working decision p
 ## Product surfaces
 
 - `/` — concise product landing page that explains one outcome and one four-step flow
-- `/app` — one product with two clearly separated roles:
+- `/app` — one product with a judge-first entry flow and two working surfaces:
+  - **Live demo:** a 30-second, four-step proof that a measured exception changes the next eligible set
   - **Worker:** set a functional requirement, choose an eligible route, start the trip, arrive and record lightweight feedback; or find and hold an eligible workspace
   - **CDH operator:** detect a hotspot, test one intervention under controlled conditions, compare aggregate and cohort outcomes, then save an exception-aware operating rule
 - `/api/decision` — deterministic serverless decision endpoint used by the demonstrator
 - `/api/health` — deployment health endpoint
 
-No account or login is required. Evidence expands inside the current task; the worker is never redirected into the operator workflow.
+No account or login is required. The guided proof writes to the same Memory used by the Worker app and CDH lab; it is not a separate animation.
 
 ## What is measured
 
