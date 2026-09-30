@@ -4,19 +4,19 @@
 
 **Live product:** https://team-bubble.vercel.app/
 
-Cremorne Memory turns fragmented precinct signals into guided actions. A worker describes an outcome in one brief; the product combines that need with weather, demand, time, capacity, access rules and local Memory to produce an eligible route × departure-time or room × time action. CDH can test an intervention, measure aggregate and cohort outcomes, store the boundary of success, and use that evidence in the next decision.
+Cremorne Memory turns fragmented precinct evidence into guided actions. A worker describes an outcome in one brief; the product combines that need with time, access, public route and venue evidence, current conditions, and validated local Memory. CDH can measure a bounded pilot, review repeated evidence, store the boundary of success, and use it in the next comparable decision.
 
 ## Product surfaces
 
 - `/` — concise product landing page that explains one outcome and one four-step flow
 - `/app` — one product with three connected views:
-  - **Live Proof:** a 30-second, four-step proof that a measured exception changes the next eligible set
+  - **Live Proof:** a 30-second real-data walkthrough of one documented hotspot, two public pedestrian routes, Mia's functional need, and the field measurements required before a rule can be published
   - **Worker App:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, follow live guidance, and record the outcome
-  - **CDH Lab:** define an intervention, run a controlled baseline comparison, measure precinct and cohort effects, then publish the discovered boundary to Memory
-- `/api/decision` — one serverless endpoint for natural-language parsing, graph-grounded recommendation, controlled experiments and outcome writes
+  - **CDH Lab:** inspect the real public baseline, define the field outcome, and review repeated room or route evidence before it becomes shared guidance
+- `/api/decision` — one serverless endpoint for natural-language parsing, graph-grounded recommendation, outcome writes, candidate-route review, and repeated workspace-issue review
 - `/api/health` — deployment health endpoint
 
-No account or login is required. The guided proof writes to the same Memory used by the Worker app and CDH lab; it is not a separate animation.
+No account or login is required. The Live Proof does not create evidence. Memory is created only by recorded worker outcomes and validated CDH evidence.
 
 ## Dynamic guidance model
 
@@ -25,7 +25,7 @@ worker brief + fragmented precinct signals
                     ↓
         structured need at time of use
                     ↓
-     eligible capacity + remaining capacity
+     eligible capacity + verified availability
                     ↓
       a small set of executable actions
                     ↓
@@ -42,9 +42,9 @@ The worker does not choose an implementation category such as **Internal** or **
 The same pattern drives both use cases:
 
 - **Movement:** destination, deadline, functional need and time flexibility → route × departure time.
-- **Workspace:** people, time, equipment, sun/glare controls and accessibility → eligible room × time window → confirmed booking.
+- **Workspace:** people, time, equipment, environmental controls and accessibility → capability match → owner-confirmed room × time window.
 
-Mia's journey is the hero application: a Cremorne worker with albinism, photosensitivity and low vision. Her route matching includes direct UV, glare, covered passages, arrival time and high-contrast guidance. Her workspace matching includes adjustable blinds, low-glare lighting and meeting equipment. The graph stores functional requirements rather than a medical diagnosis.
+Mia's journey is the hero application: a Cremorne worker with albinism and photosensitivity. Her route request stores one functional requirement—low UV—rather than a diagnosis. The current public-data match compares travel time and Vicmap canopy adjacency; the pilot adds measured direct-sun minutes and crossing wait.
 
 During a journey, the Worker App can record the walked geometry with explicit location permission. If a worker reports a better experience on a path that materially differs from the known route, they may share it as a `CandidateRoute`. Candidate paths stay outside the eligible set until CDH validates them; this lets real use discover small lanes or passages without turning one person’s trace into precinct guidance.
 
@@ -68,16 +68,17 @@ rejected  → retained as evidence, excluded from ranking
 - **Personal Memory:** observed completion time and worker feedback adjust the next route ranking for comparable journeys.
 - **Precinct Memory:** CDH publishes a rule only after a controlled comparison measures the average effect, subgroup guardrails and confidence.
 
+Workspace feedback follows the same evidence boundary. One report updates only that worker's Personal Memory. Reports from multiple independent profiles create a review candidate. A CDH validation is required before the issue becomes cohort evidence and reweights future room recommendations for the relevant requirement.
+
 ## What is measured
 
-The CDH experiment holds demand, conditions and seed constant while the decision API compares two allocations:
+The real-data pilot starts at the Cremorne Street × Swan Street gateway, where Yarra recorded **5,149 pedestrian movements across the surveyed AM and PM peak periods**. The current route baseline is reproducible from Valhalla/OpenStreetMap and Vicmap trees:
 
-1. the current flow across Routes A, B and C;
-2. a tested redistribution across the same three routes.
+- Direct Route B to East Richmond: **8.4 minutes, 12% canopy-adjacent geometry**.
+- Shadow Route C: **9.0 minutes, 28% canopy-adjacent geometry**.
+- The trade-off is **36 seconds for 16 percentage points more canopy adjacency**.
 
-The API returns both allocations, their aggregate and cohort outcomes, and a candidate operating rule. Publishing that rule writes the measured context, outcome, evidence and exception to Neo4j when configured. The Worker App retrieves that graph neighbourhood on the next comparable request: when Mia's low-UV requirement and current UV match the stored boundary, Route B leaves the eligible set before ranking.
-
-The current intervention outputs are synthetic MVP measurements and are labelled that way in the product. They demonstrate the evaluation mechanism; they are not presented as field-validated impact.
+The field pilot then records actual journey time, crossing wait, direct-sun minutes, the functional need, and Better/Same/Worse feedback. Those observed values—not a seeded result—are the evidence from which a Memory rule can be reviewed and published.
 
 ## Evidence model
 
@@ -85,15 +86,19 @@ The interface distinguishes three kinds of evidence:
 
 | Status | Used for |
 | --- | --- |
-| Forecast / live | Open-Meteo temperature and UV when available |
-| Public baseline | DTP station patronage, Vicmap urban trees, OpenStreetMap pedestrian geometry, public CDH venue capacity |
-| Modelled / synthetic | minute-level movement demand, route capacity, exposure estimate, intervention outcome and demonstration availability |
+| Current context | Cremorne-coordinate forecast when available; future ARPANSA / Yarra feed adapters |
+| Public baseline | Yarra pedestrian counts and smart-pole locations, DTP station patronage, Vicmap urban trees, OpenStreetMap pedestrian geometry, public CDH venue capability |
+| Pilot outcome | actual journey time, crossing wait, direct-sun minutes, worker feedback, owner-provided room availability |
 
 If a functional requirement cannot be supported by the available evidence, the product exposes a coverage gap. For example, step-free routing is withheld until kerb, crossing and gradient evidence is verified.
 
 ## Data sources
 
+- [City of Yarra Cremorne Streets and Movement Strategy](https://www.yarracity.vic.gov.au/sites/default/files/2024-05/cremorne_streets_and_movement_strategy_final_june2020_with_appendices.pdf)
+- [City of Yarra Cremorne smart poles](https://www.yarracity.vic.gov.au/about-us/news-and-media/smart-poles-coming-to-cremorne)
 - [DTP annual metropolitan train station patronage FY24–25](https://opendata.transport.vic.gov.au/dataset/annual-metropolitan-train-station-patronage-station-entries)
+- [DTP Victoria GTFS-Realtime](https://opendata.transport.vic.gov.au/dataset/gtfs-realtime)
+- [ARPANSA ultraviolet radiation data](https://www.arpansa.gov.au/our-services/monitoring/ultraviolet-radiation-monitoring/ultraviolet-radation-data-information)
 - [Vicmap Vegetation — Tree Urban](https://discover.data.vic.gov.au/dataset/vicmap-vegetation-tree-urban-rest-api)
 - [OpenStreetMap](https://www.openstreetmap.org/copyright) route geometry via Valhalla
 - [Cremorne Digital Hub venue information](https://www.cremornedigitalhub.com.au/events/)
@@ -129,16 +134,16 @@ OpenAI Structured Outputs → structured demand
         ↓
 Neo4j Capacity Graph → eligible route / room × time candidates
         ↓
-context + requirement graph retrieval → relevant local outcomes and exceptions
+context + requirement graph retrieval → relevant observed outcomes and reviewed exceptions
         ↓
-capacity-aware matching and ranking
+eligibility and evidence-aware ranking
         ↓
 grounded, concise option explanation
         ↓
-choice / controlled test → outcome write → next retrieval
+choice / field outcome → evidence review → next retrieval
 ```
 
-Neo4j is used directly when `NEO4J_*` credentials are configured. An in-memory graph with the same repository contract keeps the project runnable for tests and offline review. The LLM parses and explains; graph constraints, capacity calculations and measured outcomes determine the eligible set and ranking.
+Neo4j is used directly when `NEO4J_*` credentials are configured. An in-memory graph with the same repository contract keeps the project runnable for tests and offline review. The LLM parses and explains; graph constraints and observed evidence determine the eligible set and ranking. Route remaining-capacity claims stay unavailable until the Yarra/CDH smart-pole feed is connected.
 
 The three-stage illustrated Mia journey for the pre-screening deck is saved at `docs/pitch-assets/mia-user-journey-triptych.png`.
 

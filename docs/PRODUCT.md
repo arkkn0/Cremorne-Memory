@@ -72,4 +72,4 @@ Supporting measures include:
 - workers experiencing deterioration;
 - intervention cost and evidence confidence.
 
-The MVP uses controlled synthetic outputs. A field pilot replaces those outputs with anonymous counts, travel time, crossing delay, environmental measurement and lightweight opt-in feedback.
+The MVP starts with reproducible public Cremorne evidence and adds anonymous field outcomes: journey time, crossing delay, direct-sun minutes and lightweight opt-in feedback. Shared Memory is published only after repeated evidence and CDH review.

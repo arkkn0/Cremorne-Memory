@@ -1,10 +1,36 @@
 import neo4j, { type Driver, type QueryResult, type RecordShape } from 'neo4j-driver'
 import type {
   CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
-  DecisionContext, RetrievedMemory, StructuredDemand,
+  DecisionContext, RetrievedMemory, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
 } from '../src/api-contracts'
 import type { GraphCapacityUnit, GraphNeighbourhood, GraphOutcomeWrite, GraphPlace, GraphRepository, PlaceResolution } from './graph-types'
-import { DEFAULT_CAPACITY_UNITS, DEFAULT_MEMORIES, DEFAULT_PLACES, WORKSPACE_MEMORY } from './default-graph.js'
+import { DEFAULT_CAPACITY_UNITS, DEFAULT_PLACES } from './default-graph.js'
+
+const workspaceIssueThreshold = () => Math.max(2, Number(process.env.CREMORNE_ROOM_ISSUE_THRESHOLD || 3))
+
+function workspaceIssueRequirement(issue: WorkspaceIssueInput) {
+  if (issue.issue === 'temperature') return 'thermal-comfort'
+  if (issue.issue === 'blinds') return 'adjustable-blinds'
+  if (issue.issue === 'acoustics') return 'hybrid'
+  if (issue.issue === 'accessibility') return 'mobility'
+  if (issue.issue === 'equipment') return issue.facility ? `equipment:${normalise(issue.facility).replace(/ /g, '-')}` : 'equipment'
+  return 'standard'
+}
+
+function workspaceIssueSummary(issue: WorkspaceIssueInput) {
+  const subject = issue.issue === 'temperature' ? 'temperature or air-conditioning'
+    : issue.issue === 'equipment' ? `${issue.facility || 'room equipment'}`
+      : issue.issue === 'blinds' ? 'sun-control blinds'
+        : issue.issue === 'acoustics' ? 'room acoustics'
+          : issue.issue === 'accessibility' ? 'accessibility'
+            : 'room experience'
+  return `A previous visit reported an issue with ${subject}${issue.detail ? `: ${issue.detail}` : '.'}`
+}
+
+function workspaceIssueId(capacityUnitId: string, issue: WorkspaceIssueInput) {
+  const discriminator = issue.facility ? `-${normalise(issue.facility).replace(/ /g, '-')}` : ''
+  return `workspace-issue-${normalise(capacityUnitId).replace(/ /g, '-')}-${issue.issue}${discriminator}`
+}
 
 const normalise = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
@@ -44,6 +70,12 @@ function relevantRequirementKeys(demand: StructuredDemand) {
   if (demand.requirements.lowUv || demand.preferences.uv === 'lower') keys.push('low-uv', 'low-glare')
   if (demand.requirements.stepFree || demand.requirements.accessible) keys.push('mobility')
   if (demand.requirements.hybridEquipment) keys.push('hybrid')
+  demand.requirements.equipment.forEach((equipment) => {
+    const key = normalise(equipment).replace(/ /g, '-')
+    keys.push(`equipment:${key}`)
+    if (key.includes('blind')) keys.push('adjustable-blinds')
+  })
+  if (demand.intent === 'workspace') keys.push('thermal-comfort', 'acoustics', 'equipment')
   return keys.length ? keys : ['standard']
 }
 
@@ -77,9 +109,10 @@ export class InMemoryCapacityGraph implements GraphRepository {
   readonly backend = 'in-memory' as const
   private readonly places = structuredClone(DEFAULT_PLACES)
   private capacities: GraphCapacityUnit[] = structuredClone(DEFAULT_CAPACITY_UNITS)
-  private memories: Array<RetrievedMemory & { profileId?: string }> = structuredClone([...DEFAULT_MEMORIES, WORKSPACE_MEMORY])
+  private memories: Array<RetrievedMemory & { profileId?: string }> = []
   private outcomes: GraphOutcomeWrite[] = []
   private candidateRoutes: CandidateRouteRecord[] = []
+  private workspaceIssueReviews = new Map<string, { status: 'validated' | 'rejected'; reviewedAt: string; reason: string }>()
 
   async ensureSeeded() {}
 
@@ -123,6 +156,24 @@ export class InMemoryCapacityGraph implements GraphRepository {
         profileId: input.context.profileId,
       }, ...this.memories]
       memoryIds.push(id)
+    }
+    if (input.demand.intent === 'workspace' && input.workspaceIssues?.length) {
+      input.workspaceIssues.forEach((issue, index) => {
+        const id = `${input.id}-workspace-issue-${index}`
+        this.memories = [{
+          id,
+          capacityUnitId: input.capacityUnitId,
+          requirement: workspaceIssueRequirement(issue),
+          summary: workspaceIssueSummary(issue),
+          effect: (issue.severity ?? 2) * 8,
+          confidence: 0.6,
+          applies: true,
+          source: 'outcome',
+          scope: 'personal',
+          profileId: input.context.profileId,
+        }, ...this.memories]
+        memoryIds.push(id)
+      })
     }
     if (input.candidateRule) {
       const matchingUnits = this.capacities.filter((capacity) => capacity.routeCode === input.candidateRule?.routeId)
@@ -204,6 +255,69 @@ export class InMemoryCapacityGraph implements GraphRepository {
     }
     return structuredClone(candidate)
   }
+
+  async listWorkspaceIssues(status?: WorkspaceIssueStatus) {
+    const grouped = new Map<string, {
+      capacityUnitId: string
+      issue: WorkspaceIssueInput
+      reports: GraphOutcomeWrite[]
+      details: string[]
+    }>()
+    this.outcomes.filter((outcome) => outcome.demand.intent === 'workspace').forEach((outcome) => {
+      outcome.workspaceIssues?.forEach((issue) => {
+        const id = workspaceIssueId(outcome.capacityUnitId, issue)
+        const group = grouped.get(id) ?? { capacityUnitId: outcome.capacityUnitId, issue, reports: [], details: [] }
+        group.reports.push(outcome)
+        if (issue.detail && !group.details.includes(issue.detail)) group.details.push(issue.detail)
+        grouped.set(id, group)
+      })
+    })
+    const records = [...grouped.entries()].map(([id, group]) => {
+      const review = this.workspaceIssueReviews.get(id)
+      const reporterIds = new Set(group.reports.map((report) => report.context.profileId || `anonymous-${report.id}`))
+      const timestamps = group.reports.map((report) => report.context.requestedAt).sort()
+      const capacity = this.capacities.find((unit) => unit.id === group.capacityUnitId)
+      return {
+        id,
+        capacityUnitId: group.capacityUnitId,
+        capacityName: capacity?.name || group.capacityUnitId,
+        issue: group.issue.issue,
+        requirement: workspaceIssueRequirement(group.issue),
+        status: review?.status ?? (reporterIds.size >= workspaceIssueThreshold() ? 'candidate' : 'collecting'),
+        reportCount: group.reports.length,
+        independentReporterCount: reporterIds.size,
+        firstReportedAt: timestamps[0] || '',
+        lastReportedAt: timestamps.at(-1) || '',
+        reviewedAt: review?.reviewedAt,
+        reviewReason: review?.reason,
+        sampleDetails: group.details.slice(0, 3),
+      } satisfies WorkspaceIssueRecord
+    }).filter((record) => !status || record.status === status)
+    return structuredClone(records.sort((a, b) => b.independentReporterCount - a.independentReporterCount))
+  }
+
+  async reviewWorkspaceIssue(input: { issueId: string; decision: 'validate' | 'reject'; reason: string }) {
+    const issue = (await this.listWorkspaceIssues()).find((record) => record.id === input.issueId)
+    if (!issue) throw new Error(`Workspace issue ${input.issueId} was not found.`)
+    if (issue.status !== 'candidate') throw new Error('A workspace issue must reach the independent-report threshold before review.')
+    const status = input.decision === 'validate' ? 'validated' : 'rejected'
+    const reviewedAt = new Date().toISOString()
+    this.workspaceIssueReviews.set(issue.id, { status, reviewedAt, reason: input.reason })
+    if (status === 'validated') {
+      this.memories = [{
+        id: `validated-${issue.id}`,
+        capacityUnitId: issue.capacityUnitId,
+        requirement: issue.requirement,
+        summary: `${issue.independentReporterCount} independent reports confirmed: ${input.reason}`,
+        effect: 24,
+        confidence: Math.min(0.9, 0.55 + issue.independentReporterCount * 0.05),
+        applies: true,
+        source: 'outcome',
+        scope: 'cohort',
+      }, ...this.memories]
+    }
+    return (await this.listWorkspaceIssues(status))[0]
+  }
 }
 
 let cachedDriver: Driver | null = null
@@ -265,6 +379,8 @@ export class Neo4jCapacityGraph implements GraphRepository {
       'CREATE CONSTRAINT rule_id IF NOT EXISTS FOR (n:OperatingRule) REQUIRE n.id IS UNIQUE',
       'CREATE CONSTRAINT outcome_id IF NOT EXISTS FOR (n:Outcome) REQUIRE n.id IS UNIQUE',
       'CREATE CONSTRAINT requirement_key IF NOT EXISTS FOR (n:Requirement) REQUIRE n.key IS UNIQUE',
+      'CREATE CONSTRAINT issue_report_id IF NOT EXISTS FOR (n:IssueReport) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT workspace_issue_id IF NOT EXISTS FOR (n:WorkspaceIssue) REQUIRE n.id IS UNIQUE',
     ]
     for (const query of constraints) await this.run(query)
 
@@ -288,6 +404,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
           c.directUvFactor = row.directUvFactor,
           c.stepFree = row.stepFree,
           c.safeCapacity = row.safeCapacity,
+          c.capacityEvidence = row.capacityEvidence,
           c.baselineDemandShare = row.baselineDemandShare,
           c.acceptedRecommendations = row.acceptedRecommendations,
           c.facilities = row.facilities,
@@ -308,39 +425,26 @@ export class Neo4jCapacityGraph implements GraphRepository {
       { key: 'low-glare', name: 'Low glare' },
       { key: 'mobility', name: 'Step-free mobility' },
       { key: 'hybrid', name: 'Hybrid meeting equipment' },
+      { key: 'thermal-comfort', name: 'Thermal comfort' },
+      { key: 'adjustable-blinds', name: 'Adjustable blinds' },
+      { key: 'acoustics', name: 'Room acoustics' },
+      { key: 'equipment', name: 'Room equipment' },
       { key: 'standard', name: 'Standard journey' },
     ] })
 
     await this.run(`
-      MERGE (ctx:Context {id: 'high-uv-church-street'})
-      SET ctx.name = 'High UV + rising crowding', ctx.place = 'Church Street', ctx.uvMin = 7.0, ctx.crowdingMin = 72.0
-      MERGE (rule:OperatingRule {id: 'church-st-high-uv-route-b'})
-      SET rule.name = 'Route B high-UV boundary', rule.summary = 'Route B improved average flow but increased exposure for low-UV journeys.',
-          rule.effect = 40.0, rule.confidence = 0.82
-      MERGE (exception:Exception {id: 'route-b-low-uv'})
-      SET exception.name = 'Low-UV exposure +40%', exception.summary = 'Higher direct exposure in comparable high-UV conditions'
-      MERGE (requirement:Requirement {key: 'low-uv'})
-      MERGE (evidence:Evidence {id: 'synthetic-route-b-seed-42'})
-      SET evidence.kind = 'synthetic-controlled', evidence.seed = 42
-      MERGE (rule)-[:UNDER_CONTEXT]->(ctx)
-      MERGE (rule)-[:HAS_EXCEPTION]->(exception)
-      MERGE (exception)-[:AFFECTS]->(requirement)
-      MERGE (rule)-[:SUPPORTED_BY]->(evidence)
-      WITH rule
-      MATCH (capacity:CapacityUnit {routeCode: 'B'})
-      MERGE (rule)-[:APPLIES_TO]->(capacity)
+      OPTIONAL MATCH (evidence:Evidence {id: 'synthetic-route-b-seed-42'})
+      DETACH DELETE evidence
     `)
-
     await this.run(`
-      MATCH (capacity:CapacityUnit {id: 'workspace-boardroom'})
-      MERGE (requirement:Requirement {key: 'low-glare'})
-      MERGE (outcome:Outcome {id: 'boardroom-low-glare-outcome'})
-      SET outcome.feedback = 'better', outcome.summary = $summary,
-          outcome.effect = -12.0, outcome.confidence = 0.76,
-          outcome.createdAt = '2026-09-30T00:00:00.000Z'
-      MERGE (capacity)-[:HAS_OUTCOME]->(outcome)
-      MERGE (outcome)-[:FOR_REQUIREMENT]->(requirement)
-    `, { summary: WORKSPACE_MEMORY.summary })
+      OPTIONAL MATCH (rule:OperatingRule {id: 'church-st-high-uv-route-b'})
+      OPTIONAL MATCH (rule)-[:HAS_EXCEPTION]->(exception:Exception {id: 'route-b-low-uv'})
+      DETACH DELETE rule, exception
+    `)
+    await this.run(`
+      OPTIONAL MATCH (outcome:Outcome {id: 'boardroom-low-glare-outcome'})
+      DETACH DELETE outcome
+    `)
   }
 
   async resolvePlace(raw: string) {
@@ -380,7 +484,8 @@ export class Neo4jCapacityGraph implements GraphRepository {
         shadePercent: data.shadePercent == null ? undefined : toNumber(data.shadePercent),
         directUvFactor: data.directUvFactor == null ? undefined : toNumber(data.directUvFactor),
         stepFree: data.stepFree == null ? undefined : Boolean(data.stepFree),
-        safeCapacity: toNumber(data.safeCapacity), baselineDemandShare: data.baselineDemandShare == null ? undefined : toNumber(data.baselineDemandShare),
+        safeCapacity: toNumber(data.safeCapacity), capacityEvidence: data.capacityEvidence ? String(data.capacityEvidence) as 'verified' | 'unknown' : undefined,
+        baselineDemandShare: data.baselineDemandShare == null ? undefined : toNumber(data.baselineDemandShare),
         acceptedRecommendations: toNumber(data.acceptedRecommendations), facilities: stringArray(data.facilities),
         accessClass: data.accessClass ? String(data.accessClass) as 'shared' | 'internal' : undefined,
         ownerOrganisation: data.ownerOrganisation ? String(data.ownerOrganisation) : undefined,
@@ -409,6 +514,15 @@ export class Neo4jCapacityGraph implements GraphRepository {
       ORDER BY outcome.createdAt DESC
       LIMIT 20
     `, { ids, requirements, profileId: context.profileId || '' })
+    const personalIssueResult = context.profileId ? await this.run(`
+      MATCH (capacity:CapacityUnit)-[:HAS_ISSUE_REPORT]->(report:IssueReport)-[:FOR_REQUIREMENT]->(requirement:Requirement)
+      WHERE capacity.id IN $ids
+        AND requirement.key IN $requirements
+        AND report.profileId = $profileId
+      RETURN capacity.id AS capacityId, report, requirement.key AS requirementKey
+      ORDER BY report.createdAt DESC
+      LIMIT 20
+    `, { ids, requirements, profileId: context.profileId }) : null
 
     const memories: RetrievedMemory[] = [
       ...ruleResult.records.map((record) => {
@@ -427,6 +541,15 @@ export class Neo4jCapacityGraph implements GraphRepository {
           requirement: String(record.get('requirementKey')), summary: String(outcome.summary || `A comparable user rated this option ${outcome.feedback}.`),
           effect: toNumber(outcome.effect), confidence: toNumber(outcome.confidence, 0.55), applies: true, source: 'outcome' as const,
           scope: String(outcome.scope || 'cohort') as 'personal' | 'cohort' | 'precinct',
+        }
+      }),
+      ...(personalIssueResult?.records ?? []).map((record) => {
+        const report = properties(record.get('report'))
+        return {
+          id: String(report.id), capacityUnitId: String(record.get('capacityId')),
+          requirement: String(record.get('requirementKey')), summary: String(report.summary),
+          effect: toNumber(report.severity, 2) * 8, confidence: 0.6, applies: true,
+          source: 'outcome' as const, scope: 'personal' as const,
         }
       }),
     ]
@@ -470,6 +593,75 @@ export class Neo4jCapacityGraph implements GraphRepository {
     })
 
     const memoryIds: string[] = input.feedback ? [input.id] : []
+    const workspaceIssues = input.demand.intent === 'workspace'
+      ? (input.workspaceIssues ?? []).map((issue, index) => ({
+          id: `${input.id}-workspace-issue-${index}`,
+          issue: issue.issue,
+          requirement: workspaceIssueRequirement(issue),
+          detail: issue.detail || '',
+          facility: issue.facility || '',
+          severity: issue.severity ?? 2,
+          summary: workspaceIssueSummary(issue),
+        }))
+      : []
+    if (workspaceIssues.length) {
+      await this.run(`
+        MATCH (capacity:CapacityUnit {id: $capacityUnitId})
+        MATCH (outcome:Outcome {id: $outcomeId})
+        UNWIND $issues AS row
+        MERGE (requirement:Requirement {key: row.requirement})
+        MERGE (report:IssueReport {id: row.id})
+        SET report.issue = row.issue,
+            report.requirement = row.requirement,
+            report.detail = row.detail,
+            report.facility = row.facility,
+            report.severity = row.severity,
+            report.summary = row.summary,
+            report.profileId = $profileId,
+            report.createdAt = $createdAt
+        MERGE (capacity)-[:HAS_ISSUE_REPORT]->(report)
+        MERGE (outcome)-[:REPORTED]->(report)
+        MERGE (report)-[:FOR_REQUIREMENT]->(requirement)
+      `, {
+        capacityUnitId: input.capacityUnitId,
+        outcomeId: input.id,
+        issues: workspaceIssues,
+        profileId: input.context.profileId || '',
+        createdAt: new Date().toISOString(),
+      })
+      for (const issue of workspaceIssues) {
+        await this.run(`
+          MATCH (capacity:CapacityUnit {id: $capacityUnitId})-[:HAS_ISSUE_REPORT]->(report:IssueReport)
+          WHERE report.issue = $issue AND coalesce(report.facility, '') = $facility
+          WITH capacity, report.issue AS issue, report.requirement AS requirement,
+               coalesce(report.facility, '') AS facility,
+               count(report) AS reportCount,
+               count(DISTINCT CASE WHEN coalesce(report.profileId, '') = '' THEN report.id ELSE report.profileId END) AS reporterCount,
+               min(report.createdAt) AS firstReportedAt,
+               max(report.createdAt) AS lastReportedAt
+          WHERE reporterCount >= $threshold
+          MERGE (candidate:WorkspaceIssue {id: $candidateId})
+          ON CREATE SET candidate.status = 'candidate', candidate.createdAt = lastReportedAt
+          SET candidate.capacityUnitId = capacity.id,
+              candidate.capacityName = capacity.name,
+              candidate.issue = issue,
+              candidate.requirement = requirement,
+              candidate.facility = facility,
+              candidate.reportCount = reportCount,
+              candidate.independentReporterCount = reporterCount,
+              candidate.firstReportedAt = firstReportedAt,
+              candidate.lastReportedAt = lastReportedAt
+          MERGE (candidate)-[:ABOUT]->(capacity)
+        `, {
+          capacityUnitId: input.capacityUnitId,
+          issue: issue.issue,
+          facility: issue.facility,
+          threshold: workspaceIssueThreshold(),
+          candidateId: workspaceIssueId(input.capacityUnitId, issue),
+        })
+      }
+      memoryIds.push(...workspaceIssues.map((issue) => issue.id))
+    }
     if (input.candidateRule) {
       const rule = input.candidateRule
       await this.run(`
@@ -481,7 +673,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
         SET exception.name = $exceptionName, exception.summary = $exceptionSummary
         MERGE (requirement:Requirement {key: $requirement})
         MERGE (evidence:Evidence {id: $evidenceId})
-        SET evidence.kind = 'synthetic-controlled', evidence.outcomeId = $outcomeId
+        SET evidence.kind = 'reviewed-pilot-outcome', evidence.outcomeId = $outcomeId
         MERGE (rule)-[:UNDER_CONTEXT]->(context)
         MERGE (rule)-[:HAS_EXCEPTION]->(exception)
         MERGE (exception)-[:AFFECTS]->(requirement)
@@ -617,6 +809,86 @@ export class Neo4jCapacityGraph implements GraphRepository {
     const record = result.records[0]
     if (!record) throw new Error(`Candidate route ${input.candidateCapacityId} was not found or has already been reviewed.`)
     return candidateRecord(properties(record.get('candidate')), String(record.get('sourceCapacityUnitId')), String(record.get('placeId')))
+  }
+
+  async listWorkspaceIssues(status?: WorkspaceIssueStatus) {
+    await this.ensureSeeded()
+    const result = await this.run(`
+      MATCH (capacity:CapacityUnit)-[:HAS_ISSUE_REPORT]->(report:IssueReport)
+      WITH capacity, report.issue AS issue, report.requirement AS requirement,
+           coalesce(report.facility, '') AS facility,
+           count(report) AS reportCount,
+           count(DISTINCT CASE WHEN coalesce(report.profileId, '') = '' THEN report.id ELSE report.profileId END) AS reporterCount,
+           min(report.createdAt) AS firstReportedAt,
+           max(report.createdAt) AS lastReportedAt,
+           [detail IN collect(DISTINCT report.detail) WHERE detail <> ''][0..3] AS details
+      WITH capacity, issue, requirement, facility, reportCount, reporterCount, firstReportedAt, lastReportedAt, details,
+           'workspace-issue-' + replace(toLower(capacity.id), ' ', '-') + '-' + issue
+             + CASE WHEN facility = '' THEN '' ELSE '-' + replace(toLower(facility), ' ', '-') END AS issueId
+      OPTIONAL MATCH (candidate:WorkspaceIssue {id: issueId})
+      WITH capacity, issue, requirement, reportCount, reporterCount, firstReportedAt, lastReportedAt, details, issueId, candidate,
+           CASE
+             WHEN candidate.status IS NOT NULL THEN candidate.status
+             WHEN reporterCount >= $threshold THEN 'candidate'
+             ELSE 'collecting'
+           END AS resolvedStatus
+      WHERE $status = '' OR resolvedStatus = $status
+      RETURN capacity.id AS capacityUnitId, capacity.name AS capacityName,
+             issue, requirement, reportCount, reporterCount, firstReportedAt, lastReportedAt,
+             details, issueId, resolvedStatus,
+             candidate.reviewedAt AS reviewedAt, candidate.reviewReason AS reviewReason
+      ORDER BY reporterCount DESC, lastReportedAt DESC
+    `, { threshold: workspaceIssueThreshold(), status: status || '' })
+    return result.records.map((record) => ({
+      id: String(record.get('issueId')),
+      capacityUnitId: String(record.get('capacityUnitId')),
+      capacityName: String(record.get('capacityName')),
+      issue: String(record.get('issue')) as WorkspaceIssueRecord['issue'],
+      requirement: String(record.get('requirement')),
+      status: String(record.get('resolvedStatus')) as WorkspaceIssueStatus,
+      reportCount: toNumber(record.get('reportCount')),
+      independentReporterCount: toNumber(record.get('reporterCount')),
+      firstReportedAt: String(record.get('firstReportedAt')),
+      lastReportedAt: String(record.get('lastReportedAt')),
+      reviewedAt: record.get('reviewedAt') ? String(record.get('reviewedAt')) : undefined,
+      reviewReason: record.get('reviewReason') ? String(record.get('reviewReason')) : undefined,
+      sampleDetails: stringArray(record.get('details')),
+    }))
+  }
+
+  async reviewWorkspaceIssue(input: { issueId: string; decision: 'validate' | 'reject'; reason: string }) {
+    await this.ensureSeeded()
+    const status = input.decision === 'validate' ? 'validated' : 'rejected'
+    const reviewedAt = new Date().toISOString()
+    const result = await this.run(`
+      MATCH (candidate:WorkspaceIssue {id: $issueId})-[:ABOUT]->(capacity:CapacityUnit)
+      WHERE candidate.status = 'candidate'
+      SET candidate.status = $status,
+          candidate.reviewedAt = $reviewedAt,
+          candidate.reviewReason = $reason
+      FOREACH (_ IN CASE WHEN $status = 'validated' THEN [1] ELSE [] END |
+        MERGE (requirement:Requirement {key: candidate.requirement})
+        MERGE (outcome:Outcome {id: 'validated-' + candidate.id})
+        SET outcome.name = 'Validated workspace suitability evidence',
+            outcome.feedback = 'worse',
+            outcome.scope = 'cohort',
+            outcome.effect = 24.0,
+            outcome.confidence = CASE
+              WHEN candidate.independentReporterCount >= 7 THEN 0.90
+              ELSE 0.55 + candidate.independentReporterCount * 0.05
+            END,
+            outcome.summary = toString(candidate.independentReporterCount) + ' independent reports confirmed: ' + $reason,
+            outcome.createdAt = $reviewedAt
+        MERGE (capacity)-[:HAS_OUTCOME]->(outcome)
+        MERGE (outcome)-[:FOR_REQUIREMENT]->(requirement)
+        MERGE (candidate)-[:VALIDATED_AS]->(outcome)
+      )
+      RETURN candidate, capacity
+    `, { issueId: input.issueId, status, reviewedAt, reason: input.reason })
+    if (!result.records[0]) throw new Error(`Workspace issue ${input.issueId} was not found or is not ready for review.`)
+    const matching = (await this.listWorkspaceIssues(status)).find((issue) => issue.id === input.issueId)
+    if (!matching) throw new Error(`Workspace issue ${input.issueId} could not be reloaded after review.`)
+    return matching
   }
 }
 

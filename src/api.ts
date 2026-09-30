@@ -4,15 +4,17 @@ import type {
   CandidateRoutesRequest,
   CandidateRoutesResponse,
   DecisionContext,
-  ExperimentRequest,
-  ExperimentResponse,
   OutcomeRequest,
   OutcomeResponse,
   RecommendRequest,
   RecommendResponse,
+  WorkspaceIssueReviewRequest,
+  WorkspaceIssueReviewResponse,
+  WorkspaceIssuesRequest,
+  WorkspaceIssuesResponse,
 } from './api-contracts'
 
-async function decisionRequest<T>(request: RecommendRequest | ExperimentRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest): Promise<T> {
+async function decisionRequest<T>(request: RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest): Promise<T> {
   const response = await fetch('/api/decision', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -29,10 +31,6 @@ export function recommendCapacity(input: Omit<RecommendRequest, 'action'>) {
   return decisionRequest<RecommendResponse>({ action: 'recommend', ...input })
 }
 
-export function runControlledExperiment(input: Omit<ExperimentRequest, 'action'>) {
-  return decisionRequest<ExperimentResponse>({ action: 'experiment', ...input })
-}
-
 export function recordGraphOutcome(input: Omit<OutcomeRequest, 'action'>) {
   return decisionRequest<OutcomeResponse>({ action: 'outcome', ...input })
 }
@@ -45,16 +43,26 @@ export function reviewCandidateRoute(input: Omit<CandidateRouteReviewRequest, 'a
   return decisionRequest<CandidateRouteReviewResponse>({ action: 'candidate-route-review', ...input })
 }
 
+export function getWorkspaceIssues(input: Omit<WorkspaceIssuesRequest, 'action'> = {}) {
+  return decisionRequest<WorkspaceIssuesResponse>({ action: 'workspace-issues', ...input })
+}
+
+export function reviewWorkspaceIssue(input: Omit<WorkspaceIssueReviewRequest, 'action'>) {
+  return decisionRequest<WorkspaceIssueReviewResponse>({ action: 'workspace-issue-review', ...input })
+}
+
 export function currentDecisionContext({
   uvIndex,
   temperature = 31,
   crowding,
   workers,
+  profileId,
 }: {
   uvIndex: number
   temperature?: number
   crowding: number
   workers: number
+  profileId?: string
 }): DecisionContext {
-  return { uvIndex, temperature, crowding, workers, requestedAt: new Date().toISOString() }
+  return { uvIndex, temperature, crowding, workers, requestedAt: new Date().toISOString(), profileId }
 }

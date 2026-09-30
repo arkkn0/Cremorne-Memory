@@ -1,10 +1,10 @@
-import type { DecisionRequest, ExperimentRequest, RecommendRequest } from '../src/api-contracts'
+import type { DecisionRequest, RecommendRequest } from '../src/api-contracts'
 
 export const config = { runtime: 'nodejs', maxDuration: 30 }
 
 export async function handleDecisionRequest(request: Request) {
   try {
-    const { listCandidateRoutes, recommend, recordOutcome, reviewCandidateRoute, runExperiment } = await import('../server/decision-service.js')
+    const { listCandidateRoutes, listWorkspaceIssues, recommend, recordOutcome, reviewCandidateRoute, reviewWorkspaceIssue } = await import('../server/decision-service.js')
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders() })
     }
@@ -12,20 +12,22 @@ export async function handleDecisionRequest(request: Request) {
       const input = await request.json() as DecisionRequest
       const response = input.action === 'recommend'
         ? await recommend(input)
-        : input.action === 'experiment'
-          ? await runExperiment(input)
-          : input.action === 'outcome'
+        : input.action === 'outcome'
             ? await recordOutcome(input)
             : input.action === 'candidate-routes'
               ? await listCandidateRoutes(input)
               : input.action === 'candidate-route-review'
                 ? await reviewCandidateRoute(input)
+                : input.action === 'workspace-issues'
+                  ? await listWorkspaceIssues(input)
+                  : input.action === 'workspace-issue-review'
+                    ? await reviewWorkspaceIssue(input)
             : null
       if (!response) return json({ error: 'Unsupported action.' }, 400)
       return json(response)
     }
     if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405)
-    return handleLegacyGet(request, { recommend, runExperiment })
+    return handleLegacyGet(request, { recommend })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown backend error'
     return json({ error: 'Decision request failed.', detail: message }, 500)
@@ -36,12 +38,11 @@ export default { fetch: handleDecisionRequest }
 
 async function handleLegacyGet(request: Request, services: {
   recommend: typeof import('../server/decision-service.js')['recommend']
-  runExperiment: typeof import('../server/decision-service.js')['runExperiment']
 }) {
   const url = new URL(request.url)
   const need = url.searchParams.get('need') || 'standard'
   const memoryEnabled = url.searchParams.get('memory') === '1'
-  const workers = numberParam(url, 'workers', 300, 100, 500)
+  const workers = numberParam(url, 'workers', 100, 1, 10_000)
   const context = {
     uvIndex: numberParam(url, 'uv', 8.2, 0, 14),
     temperature: numberParam(url, 'temperature', 31, -10, 55),
@@ -57,19 +58,12 @@ async function handleLegacyGet(request: Request, services: {
   const recommendationRequest: RecommendRequest = {
     action: 'recommend', brief, context, useMemory: memoryEnabled,
   }
-  const experimentRequest: ExperimentRequest = {
-    action: 'experiment',
-    brief: `Redistribute ${workers} workers from ${url.searchParams.get('place') || 'Church Street'} over ${numberParam(url, 'horizon', 15, 5, 60)} minutes. Protect low-UV and mobility needs.`,
-    context: { ...context, workers }, seed: numberParam(url, 'seed', 42, 1, 10_000),
-  }
-  const [decision, experiment] = await Promise.all([services.recommend(recommendationRequest), services.runExperiment(experimentRequest)])
+  const decision = await services.recommend(recommendationRequest)
   const routeCode = (id: string) => id.endsWith('-a') ? 'A' : id.endsWith('-b') ? 'B' : 'C'
   return json({
     scenario: context,
     need,
     memoryEnabled,
-    experiment: experiment.experiment,
-    candidateRule: experiment.candidateRule,
     recommendation: decision.recommendation ? routeCode(decision.recommendation.id) : null,
     parser: decision.parser,
     graph: decision.graph,

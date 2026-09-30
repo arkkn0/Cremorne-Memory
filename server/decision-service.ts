@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import type {
   CandidateRouteReviewRequest, CandidateRouteReviewResponse, CandidateRoutesRequest, CandidateRoutesResponse,
-  ExperimentRequest, ExperimentResponse, OutcomeRequest, OutcomeResponse,
+  OutcomeRequest, OutcomeResponse,
   RecommendRequest, RecommendResponse, StructuredDemand,
+  WorkspaceIssueReviewRequest, WorkspaceIssueReviewResponse, WorkspaceIssuesRequest, WorkspaceIssuesResponse,
 } from '../src/api-contracts'
-import { buildExperimentRule, simulateScenario } from '../src/engine.js'
 import { explainOptions } from './explanations.js'
 import { getFallbackGraph, getGraphRepository } from './graph.js'
 import type { GraphRepository } from './graph-types'
-import { parseDemand, parseExperimentDemand } from './nlu.js'
+import { parseDemand } from './nlu.js'
 import { rankCapacity } from './ranking.js'
 
 export async function recommend(
@@ -36,41 +36,6 @@ export async function recommend(
   }
 }
 
-export async function runExperiment(
-  request: ExperimentRequest,
-  repository: GraphRepository = getGraphRepository(),
-): Promise<ExperimentResponse> {
-  const parsed = parseExperimentDemand(request.brief)
-  const result = simulateScenario(parsed.workers, request.seed ?? 42, parsed.horizonMin)
-  const rule = buildExperimentRule({
-    place: parsed.place,
-    uvIndex: request.context.uvIndex,
-    crowding: request.context.crowding,
-    result,
-  })
-  const demand: StructuredDemand = {
-    intent: 'movement', originalText: request.brief, destinationText: 'East Richmond', destinationId: 'east-richmond',
-    arrivalDeadline: null, departureFlexibilityMinutes: 0, startTime: null, durationMinutes: 0, capacityRequired: 1,
-    requirements: { lowUv: parsed.protectLowUv, stepFree: parsed.protectMobility, accessible: parsed.protectMobility, hybridEquipment: false, equipment: [] },
-    preferences: { crowding: 'lower', uv: parsed.protectLowUv ? 'lower' : 'standard' },
-    requirementStrength: 'required', requesterOrganisation: null, confidence: 1, unresolvedFields: [],
-  }
-  const graph = await safeGraph(repository)
-  const neighbourhood = await graph.retrieve(demand, request.context, true)
-  const relevantMemory = neighbourhood.memories
-  const protectedShare = (parsed.protectLowUv ? 0.08 : 0) + (parsed.protectMobility ? 0.08 : 0)
-  const requirementPassRate = Math.round(Math.min(100, 92 + relevantMemory.length * 2 - protectedShare * 5))
-  return {
-    action: 'experiment', decisionId: randomUUID(), demand, graph: neighbourhood.backend,
-    parsed: { workers: parsed.workers, horizonMinutes: parsed.horizonMin, place: parsed.place },
-    experiment: result,
-    baseline: { memoryEnabled: false, routeUtilisation: result.baselineLoads },
-    memoryAware: { memoryEnabled: true, routeUtilisation: result.interventionLoads, requirementPassRate },
-    candidateRule: rule,
-    retrievedMemory: relevantMemory,
-  }
-}
-
 export async function recordOutcome(
   request: OutcomeRequest,
   repository: GraphRepository = getGraphRepository(),
@@ -83,11 +48,45 @@ export async function recordOutcome(
     metrics: request.metrics, candidateRule: request.candidateRule,
     journeyTrace: request.journeyTrace, shareTrace: request.shareTrace,
     candidateRouteName: request.candidateRouteName,
+    workspaceIssues: request.workspaceIssues,
   })
   return {
     action: 'outcome', stored: true, graph: graph.backend,
     outcomeId: stored.outcomeId, memoryIds: stored.memoryIds,
     candidateCapacityId: stored.candidateCapacityId,
+  }
+}
+
+export async function listWorkspaceIssues(
+  request: WorkspaceIssuesRequest,
+  repository: GraphRepository = getGraphRepository(),
+): Promise<WorkspaceIssuesResponse> {
+  const graph = await safeGraph(repository)
+  return {
+    action: 'workspace-issues',
+    graph: graph.backend,
+    issues: await graph.listWorkspaceIssues(request.status),
+  }
+}
+
+export async function reviewWorkspaceIssue(
+  request: WorkspaceIssueReviewRequest,
+  repository: GraphRepository = getGraphRepository(),
+): Promise<WorkspaceIssueReviewResponse> {
+  if (!request.issueId?.trim()) throw new Error('A workspace issue id is required.')
+  if (request.decision !== 'validate' && request.decision !== 'reject') {
+    throw new Error('Workspace issue decision must be validate or reject.')
+  }
+  if (!request.reason?.trim()) throw new Error('A validation or rejection reason is required.')
+  const graph = await safeGraph(repository)
+  return {
+    action: 'workspace-issue-review',
+    graph: graph.backend,
+    issue: await graph.reviewWorkspaceIssue({
+      issueId: request.issueId.trim(),
+      decision: request.decision,
+      reason: request.reason.trim(),
+    }),
   }
 }
 

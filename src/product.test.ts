@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateProductRoutes, findSpaces, parseExperimentBrief, parseRouteBrief, parseSpaceBrief, productContext } from './product'
-import { FIRST_EXCEPTION } from './engine'
+import { evaluateProductRoutes, findSpaces, parseRouteBrief, parseSpaceBrief, productContext } from './product'
+import type { MemoryRule } from './domain'
+
+const OBSERVED_LOW_UV_RULE: MemoryRule = {
+  id: 'reviewed-route-b-low-uv',
+  createdAt: '2026-09-30T04:20:00.000Z',
+  context: { uvMin: 7, crowdingMin: 0, place: 'Cremorne' },
+  routeId: 'B',
+  outcome: { crowdingDelta: 0, walkingDelta: 0 },
+  exception: { functionalNeed: 'low-uv', metric: 'direct-sun minutes', delta: 1 },
+  confidence: 0.8,
+  deploymentBoundary: 'Apply only after CDH review of observed pilot outcomes.',
+}
 
 describe('public-evidence product layer', () => {
   it('loads real Cremorne context with routes, trees and station baselines', () => {
@@ -15,7 +26,7 @@ describe('public-evidence product layer', () => {
       need: 'lower-uv',
       uvIndex: 8.2,
       workers: 65,
-      memoryRules: [FIRST_EXCEPTION],
+      memoryRules: [OBSERVED_LOW_UV_RULE],
     })
 
     expect(routes.find((route) => route.id === 'east-richmond-1')).toMatchObject({ eligible: false })
@@ -35,7 +46,8 @@ describe('public-evidence product layer', () => {
 
   it('applies workspace capacity and facility constraints', () => {
     const results = findSpaces({ people: 6, requireHybrid: true, requireAccessible: true })
-    expect(results[0]).toMatchObject({ id: 'boardroom', eligible: true })
+    expect(results.find((space) => space.id === 'boardroom')).toMatchObject({ id: 'boardroom', eligible: false })
+    expect(results.find((space) => space.id === 'boardroom')?.blockers).toContain('Live owner availability is not connected yet')
     expect(results.find((space) => space.id === 'workshop')?.eligible).toBe(false)
   })
 
@@ -57,13 +69,13 @@ describe('public-evidence product layer', () => {
       flexibilityMin: 10,
       uvIndex: 8.2,
       workers: 97,
-      memoryRules: [FIRST_EXCEPTION],
+      memoryRules: [OBSERVED_LOW_UV_RULE],
     })
-    expect(routes.find((route) => route.id === 'east-richmond-2')?.suggestedDelayMin).toBe(8)
+    expect(routes.find((route) => route.id === 'east-richmond-2')?.suggestedDelayMin).toBe(0)
   })
 
   it('feeds a worker outcome back into the next route ranking', () => {
-    const input = { destination: 'east-richmond' as const, need: 'lower-crowding' as const, strength: 'preferred' as const, flexibilityMin: 10, uvIndex: 8.2, workers: 97, memoryRules: [FIRST_EXCEPTION] }
+    const input = { destination: 'east-richmond' as const, need: 'lower-crowding' as const, strength: 'preferred' as const, flexibilityMin: 10, uvIndex: 8.2, workers: 97, memoryRules: [OBSERVED_LOW_UV_RULE] }
     const baseline = evaluateProductRoutes(input)
     const route = baseline.find((option) => option.eligible)!
     const withFeedback = evaluateProductRoutes({ ...input, personalOutcomes: [{ routeId: route.id, routeName: route.name, completedAt: new Date().toISOString(), elapsedSeconds: 20, predictedMinutes: route.durationMin, exposureIndex: route.exposureIndex, feedback: 'worse' }] })
@@ -84,18 +96,9 @@ describe('public-evidence product layer', () => {
   it('uses requested time and equipment when checking room eligibility', () => {
     const matching = findSpaces({ people: 6, requireHybrid: true, requireAccessible: true, requiredEquipment: ['Display'], timeLabel: '14:00' })
     const outsideWindow = findSpaces({ people: 6, requireHybrid: true, requireAccessible: true, requiredEquipment: ['Display'], timeLabel: '15:30' })
-    expect(matching.find((space) => space.id === 'boardroom')?.eligible).toBe(true)
+    expect(matching.find((space) => space.id === 'boardroom')?.eligible).toBe(false)
+    expect(matching.find((space) => space.id === 'boardroom')?.blockers).toContain('Live owner availability is not connected yet')
     expect(outsideWindow.find((space) => space.id === 'boardroom')?.eligible).toBe(false)
-  })
-
-  it('turns an operator experiment brief into a measurable test', () => {
-    expect(parseExperimentBrief('Redistribute 320 workers from Church Street over 20 minutes. Protect low-UV and mobility needs.')).toMatchObject({
-      workers: 320,
-      horizonMin: 20,
-      place: 'Church Street',
-      protectLowUv: true,
-      protectMobility: true,
-    })
   })
 
   it('keeps internal and owner-declared shared capacity distinct', () => {

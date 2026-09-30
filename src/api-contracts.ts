@@ -55,6 +55,31 @@ export interface RetrievedMemory {
 }
 
 export type CandidateRouteStatus = 'candidate' | 'under-validation' | 'validated' | 'rejected'
+export type WorkspaceIssueKey = 'temperature' | 'equipment' | 'blinds' | 'acoustics' | 'accessibility' | 'other'
+export type WorkspaceIssueStatus = 'collecting' | 'candidate' | 'validated' | 'rejected'
+
+export interface WorkspaceIssueInput {
+  issue: WorkspaceIssueKey
+  detail?: string
+  facility?: string
+  severity?: 1 | 2 | 3
+}
+
+export interface WorkspaceIssueRecord {
+  id: string
+  capacityUnitId: string
+  capacityName: string
+  issue: WorkspaceIssueKey
+  requirement: string
+  status: WorkspaceIssueStatus
+  reportCount: number
+  independentReporterCount: number
+  firstReportedAt: string
+  lastReportedAt: string
+  reviewedAt?: string
+  reviewReason?: string
+  sampleDetails: string[]
+}
 
 export interface CandidateRouteRecord {
   id: string
@@ -101,6 +126,7 @@ export interface RankedCapacityOption {
   predictedDemand?: number
   safeCapacity: number
   remainingCapacity: number
+  capacityEvidence?: 'verified' | 'unknown'
   shadePercent?: number
   exposureIndex?: number
   stepFree?: boolean
@@ -134,35 +160,6 @@ export interface RecommendResponse {
   decisionId: string
 }
 
-export interface ExperimentRequest {
-  action: 'experiment'
-  brief: string
-  context: DecisionContext
-  seed?: number
-}
-
-export interface ExperimentResult {
-  crowdingDelta: number
-  walkingDelta: number
-  uvDeltaLowUv: number
-  mobilityFrictionDelta: number
-  baselineLoads: Record<'A' | 'B' | 'C', number>
-  interventionLoads: Record<'A' | 'B' | 'C', number>
-}
-
-export interface ExperimentResponse {
-  action: 'experiment'
-  decisionId: string
-  demand: StructuredDemand
-  graph: 'neo4j' | 'in-memory'
-  parsed: { workers: number; horizonMinutes: number; place: string }
-  experiment: ExperimentResult
-  baseline: { memoryEnabled: false; routeUtilisation: Record<'A' | 'B' | 'C', number> }
-  memoryAware: { memoryEnabled: true; routeUtilisation: Record<'A' | 'B' | 'C', number>; requirementPassRate: number }
-  candidateRule: import('./domain').MemoryRule
-  retrievedMemory: RetrievedMemory[]
-}
-
 export interface OutcomeRequest {
   action: 'outcome'
   decisionId: string
@@ -175,6 +172,7 @@ export interface OutcomeRequest {
   journeyTrace?: [number, number][]
   shareTrace?: boolean
   candidateRouteName?: string
+  workspaceIssues?: WorkspaceIssueInput[]
 }
 
 export interface OutcomeResponse {
@@ -211,5 +209,29 @@ export interface CandidateRouteReviewResponse {
   candidate: CandidateRouteRecord
 }
 
-export type DecisionRequest = RecommendRequest | ExperimentRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest
-export type DecisionResponse = RecommendResponse | ExperimentResponse | OutcomeResponse | CandidateRoutesResponse | CandidateRouteReviewResponse
+export interface WorkspaceIssuesRequest {
+  action: 'workspace-issues'
+  status?: WorkspaceIssueStatus
+}
+
+export interface WorkspaceIssuesResponse {
+  action: 'workspace-issues'
+  graph: 'neo4j' | 'in-memory'
+  issues: WorkspaceIssueRecord[]
+}
+
+export interface WorkspaceIssueReviewRequest {
+  action: 'workspace-issue-review'
+  issueId: string
+  decision: 'validate' | 'reject'
+  reason: string
+}
+
+export interface WorkspaceIssueReviewResponse {
+  action: 'workspace-issue-review'
+  graph: 'neo4j' | 'in-memory'
+  issue: WorkspaceIssueRecord
+}
+
+export type DecisionRequest = RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest
+export type DecisionResponse = RecommendResponse | OutcomeResponse | CandidateRoutesResponse | CandidateRouteReviewResponse | WorkspaceIssuesResponse | WorkspaceIssueReviewResponse

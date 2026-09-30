@@ -159,10 +159,32 @@ const generatedAt = new Date().toISOString()
 const context = {
   generatedAt,
   evidenceModel: {
-    live: ['Open-Meteo temperature and UV when available'],
-    publicBaseline: ['DTP station patronage', 'Vicmap urban trees', 'OpenStreetMap route geometry'],
-    simulated: ['minute-level pedestrian load', 'route capacity', 'intervention outcomes', 'space availability'],
+    live: ['Cremorne-coordinate weather and UV forecast when available'],
+    publicBaseline: ['Yarra pedestrian counts', 'DTP station patronage', 'Vicmap urban trees', 'OpenStreetMap route geometry', 'CDH public venue capability'],
+    pilotMeasurement: ['actual journey time', 'crossing wait', 'direct-sun minutes', 'worker feedback', 'owner-provided room availability'],
   },
+  hotspots: [
+    {
+      id: 'cremorne-swan-gateway',
+      name: 'Cremorne Street × Swan Street',
+      surveyedPedestrianMovements: 5149,
+      surveyWindow: 'AM + PM peak periods (two hours total)',
+      breakdown: {
+        northSouthCremorneStreet: 1448,
+        eastWestAcrossCremorneStreet: 1467,
+        northSouthAcrossSwanStreet: 2214,
+      },
+      evidenceSource: 'City of Yarra Cremorne Streets and Movement Strategy, Figure 21',
+    },
+  ],
+  smartPoles: [
+    '60 Swan Street',
+    '60–88 Cremorne Street',
+    '85 Cremorne Street',
+    '168 Cremorne Street',
+    '53 Balmain Street',
+    '80 Balmain Street / Cremorne Digital Hub',
+  ],
   places: {
     cdh: { id: 'cdh', name: 'Cremorne Digital Hub', address: '80 Balmain Street, Cremorne', position: [-37.830362, 144.994553] },
     richmond: stationRecord(stationRows, 'Richmond'),
@@ -171,12 +193,16 @@ const context = {
   routeSets,
   trees: relevantTrees,
   spaces: [
-    { id: 'boardroom', name: 'CDH Boardroom', capacity: 12, mode: 'Meeting', facilities: ['Display', 'Video call'], accessible: true, availability: ['14:00–15:00', '16:00–17:30'], availabilityStatus: 'demonstration' },
-    { id: 'workshop', name: 'CDH Workshop Room', capacity: 24, standingCapacity: 40, mode: 'Workshop', facilities: ['Display', 'Flexible seating'], accessible: true, availability: ['13:30–15:30'], availabilityStatus: 'demonstration' },
-    { id: 'event', name: 'CDH Main Event Space', capacity: 80, standingCapacity: 100, mode: 'Event', facilities: ['AV', 'Flexible layout'], accessible: true, availability: [], availabilityStatus: 'demonstration' },
+    { id: 'boardroom', name: 'CDH Boardroom', capacity: 12, mode: 'Meeting', facilities: ['Video conference'], accessible: true, availability: [], availabilityStatus: 'owner-confirmation-required', accessClass: 'shared' },
+    { id: 'workshop', name: 'CDH Workshop Space', capacity: 24, standingCapacity: 50, mode: 'Workshop', facilities: ['Display', 'Flexible seating'], accessible: true, availability: [], availabilityStatus: 'owner-confirmation-required', accessClass: 'shared' },
+    { id: 'event', name: 'CDH Main Event Space', capacity: 80, standingCapacity: 100, mode: 'Event', facilities: ['AV', 'Hybrid presentation', 'High-speed internet'], accessible: true, availability: [], availabilityStatus: 'owner-confirmation-required', accessClass: 'shared' },
   ],
   sources: [
+    { label: 'City of Yarra Cremorne Streets and Movement Strategy', url: 'https://www.yarracity.vic.gov.au/sites/default/files/2024-05/cremorne_streets_and_movement_strategy_final_june2020_with_appendices.pdf', licence: 'Public council strategy' },
+    { label: 'City of Yarra Cremorne smart-pole locations and sensing capability', url: 'https://www.yarracity.vic.gov.au/about-us/news-and-media/smart-poles-coming-to-cremorne', licence: 'Public council information' },
     { label: 'DTP annual metropolitan station patronage FY24–25', url: 'https://opendata.transport.vic.gov.au/dataset/annual-metropolitan-train-station-patronage-station-entries', licence: 'Victorian Government open data' },
+    { label: 'DTP Victoria GTFS-Realtime', url: 'https://opendata.transport.vic.gov.au/dataset/gtfs-realtime', licence: 'Victorian Government open data' },
+    { label: 'ARPANSA ultraviolet radiation data', url: 'https://www.arpansa.gov.au/our-services/monitoring/ultraviolet-radiation-monitoring/ultraviolet-radation-data-information', licence: 'Attribution required' },
     { label: 'Vicmap Vegetation — Tree Urban', url: 'https://discover.data.vic.gov.au/dataset/vicmap-vegetation-tree-urban-rest-api', licence: 'CC BY 4.0' },
     { label: 'OpenStreetMap / Valhalla pedestrian route geometry', url: 'https://www.openstreetmap.org/copyright', licence: 'ODbL' },
     { label: 'Cremorne Digital Hub venue capacities', url: 'https://www.cremornedigitalhub.com.au/events/', licence: 'Public venue information' },

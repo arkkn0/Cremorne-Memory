@@ -1,6 +1,6 @@
 import type {
   CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
-  DecisionContext, DemandIntent, RetrievedMemory, StructuredDemand,
+  DecisionContext, DemandIntent, RetrievedMemory, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
 } from '../src/api-contracts'
 import type { MemoryRule } from '../src/domain'
 
@@ -24,6 +24,7 @@ export interface GraphCapacityUnit {
   directUvFactor?: number
   stepFree?: boolean
   safeCapacity: number
+  capacityEvidence?: 'verified' | 'unknown'
   baselineDemandShare?: number
   acceptedRecommendations: number
   facilities: string[]
@@ -56,6 +57,7 @@ export interface GraphOutcomeWrite {
   journeyTrace?: [number, number][]
   shareTrace?: boolean
   candidateRouteName?: string
+  workspaceIssues?: WorkspaceIssueInput[]
 }
 
 export interface GraphRepository {
@@ -71,5 +73,11 @@ export interface GraphRepository {
     reason: string
     evidence?: CandidateRouteEvidence
   }): Promise<CandidateRouteRecord>
+  listWorkspaceIssues(status?: WorkspaceIssueStatus): Promise<WorkspaceIssueRecord[]>
+  reviewWorkspaceIssue(input: {
+    issueId: string
+    decision: 'validate' | 'reject'
+    reason: string
+  }): Promise<WorkspaceIssueRecord>
 }
 

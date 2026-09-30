@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { listCandidateRoutes, recommend, recordOutcome, reviewCandidateRoute } from '../server/decision-service'
+import { listCandidateRoutes, listWorkspaceIssues, recommend, recordOutcome, reviewCandidateRoute, reviewWorkspaceIssue } from '../server/decision-service'
 import { InMemoryCapacityGraph } from '../server/graph'
 import type { DecisionContext } from '../src/api-contracts'
 
@@ -13,13 +13,19 @@ const context: DecisionContext = {
 }
 
 describe('graph-grounded decision loop', () => {
-  it('retrieves the low-UV exception and changes the eligible set', async () => {
+  it('starts without invented Memory and retrieves a real recorded personal outcome', async () => {
     const graph = new InMemoryCapacityGraph()
     const withoutMemory = await recommend({ action: 'recommend', brief: 'Get me to East Richmond by 4:20pm and avoid direct sun.', context, useMemory: false }, graph)
+    await recordOutcome({
+      action: 'outcome', decisionId: withoutMemory.decisionId, capacityUnitId: 'route-east-richmond-b',
+      demand: withoutMemory.demand, context, feedback: 'worse', metrics: { elapsedSeconds: 620 },
+    }, graph)
     const withMemory = await recommend({ action: 'recommend', brief: 'Get me to East Richmond by 4:20pm and avoid direct sun.', context, useMemory: true }, graph)
 
     expect(withoutMemory.options.find((option) => option.name.includes('Route B'))?.eligible).toBe(true)
-    expect(withMemory.options.find((option) => option.name.includes('Route B'))?.eligible).toBe(false)
+    expect(withMemory.options.find((option) => option.name.includes('Route B'))?.memory).toEqual(
+      expect.arrayContaining([expect.objectContaining({ scope: 'personal', summary: expect.stringContaining('worse') })]),
+    )
     expect(withMemory.recommendation?.name).toContain('Shadow Route C')
   })
 
@@ -45,7 +51,12 @@ describe('graph-grounded decision loop', () => {
   it('uses the same graph for a room × time request', async () => {
     const response = await recommend({ action: 'recommend', brief: 'I need a room for six people at 2pm for 45 minutes with hybrid equipment and a display.', context, useMemory: true }, new InMemoryCapacityGraph())
     expect(response.demand.intent).toBe('workspace')
-    expect(response.recommendation).toMatchObject({ productId: 'boardroom', availableFrom: '14:00', availableUntil: '14:45' })
+    expect(response.recommendation).toBeNull()
+    expect(response.options.find((option) => option.productId === 'boardroom')).toMatchObject({
+      safeCapacity: 12,
+      eligible: false,
+      facilities: expect.arrayContaining(['Video conference']),
+    })
   })
 
   it('adds a better, distinct walked trace as candidate capacity', async () => {
@@ -119,5 +130,41 @@ describe('graph-grounded decision loop', () => {
     }, graph)
     const response = await recommend({ action: 'recommend', brief: 'Get me to East Richmond by 4:20pm.', context, useMemory: true }, graph)
     expect(response.options.some((option) => option.id === stored.candidateCapacityId)).toBe(false)
+  })
+
+  it('turns repeated room reports into reviewable evidence before cohort reweighting', async () => {
+    const graph = new InMemoryCapacityGraph()
+    for (const profileId of ['worker-1', 'worker-2', 'worker-3']) {
+      const workerContext = { ...context, profileId }
+      const decision = await recommend({
+        action: 'recommend', brief: 'I need a room for six people at 2pm for 45 minutes with hybrid equipment.',
+        context: workerContext, useMemory: true,
+      }, graph)
+      await recordOutcome({
+        action: 'outcome', decisionId: decision.decisionId, capacityUnitId: 'workspace-boardroom',
+        demand: decision.demand, context: workerContext, feedback: 'worse', metrics: {},
+        workspaceIssues: [{ issue: 'acoustics', detail: 'Remote participants could not hear clearly.', severity: 2 }],
+      }, graph)
+    }
+
+    const candidates = await listWorkspaceIssues({ action: 'workspace-issues', status: 'candidate' }, graph)
+    expect(candidates.issues).toHaveLength(1)
+    expect(candidates.issues[0]).toMatchObject({
+      capacityUnitId: 'workspace-boardroom', issue: 'acoustics', independentReporterCount: 3,
+    })
+
+    const reviewed = await reviewWorkspaceIssue({
+      action: 'workspace-issue-review', issueId: candidates.issues[0].id, decision: 'validate',
+      reason: 'Repeated hybrid calls showed the same acoustic issue.',
+    }, graph)
+    expect(reviewed.issue.status).toBe('validated')
+
+    const next = await recommend({
+      action: 'recommend', brief: 'I need a room for six people at 2pm for 45 minutes with hybrid equipment.',
+      context: { ...context, profileId: 'worker-4' }, useMemory: true,
+    }, graph)
+    expect(next.retrievedMemory).toEqual(expect.arrayContaining([
+      expect.objectContaining({ capacityUnitId: 'workspace-boardroom', scope: 'cohort', requirement: 'hybrid' }),
+    ]))
   })
 })
