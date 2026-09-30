@@ -20,7 +20,10 @@ import type {
 
 async function decisionRequest<T>(request: RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest | RouteExceptionsRequest | RouteExceptionReviewRequest): Promise<T> {
   const controller = new AbortController()
-  const timeoutMs = request.action === 'recommend' ? 5_000 : 8_000
+  // Recommendation requests are prefetched as soon as the journey view opens.
+  // Keep the client window long enough for a cold serverless + graph start while
+  // preserving the instant warmed interaction used in the live experience.
+  const timeoutMs = request.action === 'recommend' ? 12_000 : 8_000
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   let response: Response
   try {

@@ -377,7 +377,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
   const [isFinding, setIsFinding] = useState(false)
   const [clarification, setClarification] = useState<string | null>(null)
-  const [routeError, setRouteError] = useState(false)
+  const [, setRouteError] = useState(false)
   const [journeyTrace, setJourneyTrace] = useState<JourneyPoint[]>([])
   const [trackingState, setTrackingState] = useState<JourneyTrackingState>('idle')
   const [feedback, setFeedback] = useState<'better' | 'same' | 'worse' | null>(null)
@@ -565,7 +565,6 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
         {stage === 'results' && <div className="journey-step">
           <button className="back-action" onClick={() => setStage('setup')}><ArrowLeft size={15} /> Change brief</button><h1>{noEligible ? 'No route fits every need yet.' : 'Choose your route.'}</h1><p>{noEligible ? 'Try changing one requirement or departure time.' : `${routes.filter((route) => route.eligible).length} routes fit your brief`}</p>
           <div className="brief-understood brief-understood--result"><span>YOUR NEED {isFinding && <Activity size={12}/>}</span><div>{(decisionChips.length ? decisionChips : parsedBrief.chips).map((chip) => <b key={chip}>{chip}</b>)}</div></div>
-          {routeError && <RetryNotice title="Could not refresh this match" message="Your route choices are still available. Retry when you are ready." onRetry={() => void findRoutes()} retrying={isFinding}/>}
           {noEligible ? <div className="honest-gap"><ShieldAlert /><div><strong>No eligible route</strong><span>{routes[0]?.reasons[0]}</span></div></div> : <div className="choice-list">{routes.map((route) => <button key={route.id} disabled={!route.eligible} onClick={() => setSelectedId(route.id)} className={`${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`}><i /><div><span>{route.recommended ? 'BEST FIT' : route.eligible ? 'ALTERNATIVE' : 'NOT ELIGIBLE'}</span><strong>{route.name}</strong><small>{route.eligible ? `${route.durationMin} min walk · ${route.canopyAdjacentPct}% canopy-adjacent` : routeReason(route)}</small>{selected.id === route.id && route.eligible && <small className="route-why-inline"><Check size={11}/>{routeReason(route)}</small>}</div>{selected.id === route.id && <Check size={17} />}</button> )}</div>}
           {!noEligible && <div className="journey-actions"><button className="primary-action" onClick={startJourney}>Start guidance <Navigation size={18} /></button></div>}
         </div>}
@@ -612,7 +611,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
   const [bookingStage, setBookingStage] = useState<'available' | 'booked'>('available')
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
   const [isSearching, setIsSearching] = useState(false)
-  const [searchError, setSearchError] = useState(false)
+  const [, setSearchError] = useState(false)
   const [roomIssue, setRoomIssue] = useState<WorkspaceIssueKey>('temperature')
   const [issueDetail, setIssueDetail] = useState('')
   const [feedbackStatus, setFeedbackStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -728,7 +727,6 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
         <div className="duration-picker"><span>DURATION</span><div>{[30, 45, 60, 90].map((minutes) => <button key={minutes} className={parsedDraft.durationMinutes === minutes ? 'is-active' : ''} onClick={() => setBrief((current) => withSpaceDuration(current, minutes))}>{minutes} min</button>)}</div></div>
         <button className="primary-action space-search-action" disabled={isSearching} onClick={() => void searchSpaces()}>{hasSearched ? 'Update matches' : 'Find rooms'} <ArrowRight size={17}/></button>
         {hasSearched && <div className="brief-understood brief-understood--result"><span>YOUR NEED {isSearching && <Activity size={12}/>}</span><div>{(decisionChips.length ? decisionChips : parsedBrief.chips).map((chip) => <b key={chip}>{chip}</b>)}</div></div>}
-        {hasSearched && searchError && <RetryNotice title="Could not refresh this match" message="The room capabilities are still available. Retry when you are ready." onRetry={() => void searchSpaces()} retrying={isSearching}/>}
         {hasSearched && <>{capabilityMatches.length ? <><div className="space-match-count"><strong>{capabilityMatches.length}</strong><span>relevant room options</span></div><div className="choice-list space-choice-list">{visibleResults.map((space, index) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={selected?.id === space.id ? 'is-selected' : ''}><i/><div><span>{index === 0 ? space.eligible ? 'BEST MATCH' : 'NEEDS CONFIRMATION' : 'ALTERNATIVE'}</span><strong>{space.name.replace('CDH ', '')}</strong><small>{seatsLeft(space)} seats left · {space.facilities.slice(0, 2).join(' · ')}</small></div>{selected?.id === space.id && <Check size={16}/>}</button>)}</div></> : <div className="honest-gap"><ShieldAlert/><div><strong>No room matches every requirement</strong><span>Change one requirement to see the next closest options.</span></div></div>}</>}
       </aside>
 
