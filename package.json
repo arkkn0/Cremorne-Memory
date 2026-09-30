@@ -24,7 +24,8 @@
     "react-dom": "latest",
     "react-leaflet": "^5.0.0",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "latest",
