@@ -2,8 +2,8 @@ import neo4j, { type Driver, type QueryResult, type RecordShape } from 'neo4j-dr
 import type {
   CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
   DecisionContext, RetrievedMemory, RouteExceptionRecord, RouteExceptionStatus, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
-} from '../src/api-contracts'
-import type { GraphCapacityUnit, GraphNeighbourhood, GraphOutcomeWrite, GraphPlace, GraphRepository, PlaceResolution } from './graph-types'
+} from '../src/api-contracts.js'
+import type { GraphCapacityUnit, GraphNeighbourhood, GraphOutcomeWrite, GraphPlace, GraphRepository, PlaceResolution } from './graph-types.js'
 import { DEFAULT_CAPACITY_UNITS, DEFAULT_PLACES } from './default-graph.js'
 
 const workspaceIssueThreshold = () => Math.max(2, Number(process.env.CREMORNE_ROOM_ISSUE_THRESHOLD || 3))

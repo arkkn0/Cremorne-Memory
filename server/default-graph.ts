@@ -1,5 +1,5 @@
 import contextData from '../src/cremorne-context.json' with { type: 'json' }
-import type { GraphCapacityUnit, GraphPlace } from './graph-types'
+import type { GraphCapacityUnit, GraphPlace } from './graph-types.js'
 
 type RouteRecord = {
   id: string

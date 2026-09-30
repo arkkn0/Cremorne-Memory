@@ -1,8 +1,8 @@
 import type {
   CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
   DecisionContext, DemandIntent, RetrievedMemory, RouteExceptionRecord, RouteExceptionStatus, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
-} from '../src/api-contracts'
-import type { MemoryRule } from '../src/domain'
+} from '../src/api-contracts.js'
+import type { MemoryRule } from '../src/domain.js'
 
 export interface GraphPlace {
   id: string

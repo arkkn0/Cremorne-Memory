@@ -5,10 +5,10 @@ import type {
   RecommendRequest, RecommendResponse, StructuredDemand,
   RouteExceptionReviewRequest, RouteExceptionReviewResponse, RouteExceptionsRequest, RouteExceptionsResponse,
   WorkspaceIssueReviewRequest, WorkspaceIssueReviewResponse, WorkspaceIssuesRequest, WorkspaceIssuesResponse,
-} from '../src/api-contracts'
+} from '../src/api-contracts.js'
 import { explainOptions } from './explanations.js'
 import { getFallbackGraph, getGraphRepository } from './graph.js'
-import type { GraphRepository } from './graph-types'
+import type { GraphRepository } from './graph-types.js'
 import { parseDemand } from './nlu.js'
 import { rankCapacity } from './ranking.js'
 

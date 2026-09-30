@@ -185,7 +185,7 @@ export interface OutcomeRequest {
   context: DecisionContext
   feedback?: 'better' | 'same' | 'worse'
   metrics: Record<string, number>
-  candidateRule?: import('./domain').MemoryRule
+  candidateRule?: import('./domain.js').MemoryRule
   journeyTrace?: [number, number][]
   shareTrace?: boolean
   candidateRouteName?: string

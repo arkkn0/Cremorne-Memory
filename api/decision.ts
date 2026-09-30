@@ -1,4 +1,4 @@
-import type { RecommendRequest } from '../src/api-contracts'
+import type { RecommendRequest } from '../src/api-contracts.js'
 import { validateDecisionRequest } from '../server/validation.js'
 
 export const config = { runtime: 'nodejs', maxDuration: 30 }

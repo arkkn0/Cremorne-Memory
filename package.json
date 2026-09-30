@@ -16,6 +16,7 @@
     "graph:verify-candidate": "node --import tsx ./scripts/verify-candidate-route-flow.ts"
   },
   "dependencies": {
+    "@types/node": "26.6.3",
     "@vitejs/plugin-react": "latest",
     "leaflet": "^1.9.4",
     "lucide-react": "latest",
@@ -30,7 +31,6 @@
   "devDependencies": {
     "@eslint/js": "latest",
     "@types/leaflet": "^1.9.22",
-    "@types/node": "latest",
     "@types/qrcode": "^1.5.6",
     "@types/react": "latest",
     "@types/react-dom": "latest",

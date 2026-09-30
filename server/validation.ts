@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { DecisionRequest } from '../src/api-contracts'
+import type { DecisionRequest } from '../src/api-contracts.js'
 
 const boundedText = (max: number) => z.string().trim().min(1).max(max)
 const id = z.string().trim().min(1).max(180).regex(/^[a-zA-Z0-9._:-]+$/)

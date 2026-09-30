@@ -1,3 +1,5 @@
+import process from 'node:process'
+
 export const config = { runtime: 'nodejs' }
 
 export function handleHealthRequest() {

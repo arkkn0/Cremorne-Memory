@@ -1,8 +1,8 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { handleDecisionRequest } from './api/decision'
-import { handleHealthRequest } from './api/health'
-import { handleContextRequest } from './api/context'
+import { handleDecisionRequest } from './api/decision.js'
+import { handleHealthRequest } from './api/health.js'
+import { handleContextRequest } from './api/context.js'
 
 function localApi(): Plugin {
   return {

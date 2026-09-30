@@ -1,4 +1,4 @@
-import type { StructuredDemand } from '../src/api-contracts'
+import type { StructuredDemand } from '../src/api-contracts.js'
 import { llmConfigured, requestStructuredOutput } from './llm.js'
 
 const demandSchema = {

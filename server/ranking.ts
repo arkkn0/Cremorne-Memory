@@ -1,5 +1,5 @@
-import type { DecisionContext, RankedCapacityOption, StructuredDemand } from '../src/api-contracts'
-import type { GraphCapacityUnit, GraphNeighbourhood } from './graph-types'
+import type { DecisionContext, RankedCapacityOption, StructuredDemand } from '../src/api-contracts.js'
+import type { GraphCapacityUnit, GraphNeighbourhood } from './graph-types.js'
 
 export function rankCapacity(
   demand: StructuredDemand,
