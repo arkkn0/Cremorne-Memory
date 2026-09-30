@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import type { EvaluatedProductRoute } from './product'
 import { productContext } from './product'
+import type { JourneyPoint } from './journey-trace'
 
 const routeColours = ['#ff5c3b', '#6d7c78', '#1d7f69']
 
@@ -14,16 +15,28 @@ function FitRoute({ routes }: { routes: EvaluatedProductRoute[] }) {
   return null
 }
 
+function FollowJourney({ point }: { point?: JourneyPoint }) {
+  const map = useMap()
+  useEffect(() => {
+    if (point) map.panTo(point, { animate: true, duration: 0.8 })
+  }, [map, point])
+  return null
+}
+
 export default function CremorneMap({
   routes,
   selectedId,
   onSelect,
   showTrees,
+  journeyProgress,
+  journeyTrace = [],
 }: {
   routes: EvaluatedProductRoute[]
   selectedId?: string
   onSelect: (id: string) => void
   showTrees: boolean
+  journeyProgress?: number
+  journeyTrace?: JourneyPoint[]
 }) {
   const [flowTick, setFlowTick] = useState(0)
   useEffect(() => {
@@ -32,6 +45,11 @@ export default function CremorneMap({
   }, [])
 
   const activeRoute = routes.find((route) => route.id === selectedId) ?? routes.find((route) => route.recommended)
+  const guidedPosition = useMemo(() => {
+    if (!activeRoute?.coordinates.length || journeyProgress == null) return undefined
+    const index = Math.min(activeRoute.coordinates.length - 1, Math.floor(journeyProgress * (activeRoute.coordinates.length - 1)))
+    return journeyTrace.at(-1) ?? activeRoute.coordinates[index]
+  }, [activeRoute, journeyProgress, journeyTrace])
   const movingWorkers = useMemo(() => {
     if (!activeRoute?.coordinates.length) return []
     return Array.from({ length: 9 }, (_, index) => {
@@ -48,6 +66,7 @@ export default function CremorneMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FitRoute routes={routes} />
+      <FollowJourney point={guidedPosition} />
 
       {showTrees && productContext.trees.map((tree) => (
         <CircleMarker
@@ -89,6 +108,9 @@ export default function CremorneMap({
           pathOptions={{ color: '#202521', fillColor: '#ffd85a', fillOpacity: 1, weight: 1.5 }}
         />
       ))}
+
+      {journeyTrace.length > 1 && <Polyline positions={journeyTrace} pathOptions={{ color: '#ffd85a', opacity: 1, weight: 7, className: 'actual-journey-line' }}><Tooltip>Your walked path</Tooltip></Polyline>}
+      {guidedPosition && <CircleMarker center={guidedPosition} radius={9} pathOptions={{ color: '#fff', fillColor: '#202521', fillOpacity: 1, weight: 4 }}><Tooltip permanent direction="top" offset={[0, -10]}>You</Tooltip></CircleMarker>}
 
       <CircleMarker center={productContext.places.cdh.position} radius={8} pathOptions={{ color: '#232824', fillColor: '#ffd85a', fillOpacity: 1, weight: 3 }}>
         <Tooltip permanent direction="right" offset={[10, 0]} className="place-label">CDH</Tooltip>

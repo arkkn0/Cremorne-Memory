@@ -3,10 +3,14 @@ dist
 .vercel
 .DS_Store
 *.local
+.env
+.env.*
+!.env.example
 coverage
 .artifacts
 .deck-review/
 .codex-finalizer-deck/
 submission/
+neo4j-data/
 
 .vercel

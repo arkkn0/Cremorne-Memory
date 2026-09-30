@@ -1,55 +1,82 @@
-import type { FunctionalNeed, Scenario } from '../src/domain'
-import { buildExperimentRule, evaluateRoutes, FIRST_EXCEPTION, simulateScenario } from '../src/engine'
+import type { DecisionRequest, ExperimentRequest, RecommendRequest } from '../src/api-contracts'
+import { recommend, recordOutcome, runExperiment } from '../server/decision-service'
 
-export const config = { runtime: 'edge' }
+export const config = { runtime: 'nodejs', maxDuration: 30 }
 
-const allowedNeeds: FunctionalNeed[] = ['standard', 'low-uv', 'step-free']
+export default async function handler(request: Request) {
+  try {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders() })
+    }
+    if (request.method === 'POST') {
+      const input = await request.json() as DecisionRequest
+      const response = input.action === 'recommend'
+        ? await recommend(input)
+        : input.action === 'experiment'
+          ? await runExperiment(input)
+          : input.action === 'outcome'
+            ? await recordOutcome(input)
+            : null
+      if (!response) return json({ error: 'Unsupported action.' }, 400)
+      return json(response)
+    }
+    if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405)
+    return handleLegacyGet(request)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown backend error'
+    return json({ error: 'Decision request failed.', detail: message }, 500)
+  }
+}
 
-export default function handler(request: Request) {
+async function handleLegacyGet(request: Request) {
   const url = new URL(request.url)
-  const requestedNeed = url.searchParams.get('need') as FunctionalNeed | null
-  const need = requestedNeed && allowedNeeds.includes(requestedNeed) ? requestedNeed : 'standard'
+  const need = url.searchParams.get('need') || 'standard'
   const memoryEnabled = url.searchParams.get('memory') === '1'
-  const seed = numberParam(url, 'seed', 42, 1, 10_000)
-  const horizonMin = numberParam(url, 'horizon', 15, 5, 60)
-
-  const scenario: Scenario = {
+  const workers = numberParam(url, 'workers', 300, 100, 500)
+  const context = {
     uvIndex: numberParam(url, 'uv', 8.2, 0, 14),
     temperature: numberParam(url, 'temperature', 31, -10, 55),
     crowding: numberParam(url, 'crowding', 82, 0, 100),
-    workers: numberParam(url, 'workers', 300, 100, 500),
-    departure: url.searchParams.get('departure') ?? '2:20 pm',
-    weatherSource: 'scenario',
+    workers: Math.min(100, Math.max(35, Math.round(workers / 4))),
+    requestedAt: new Date().toISOString(),
   }
-
-  const rules = memoryEnabled ? [FIRST_EXCEPTION] : []
-  const routes = evaluateRoutes(scenario, need, rules)
-  const experiment = simulateScenario(scenario.workers, seed, horizonMin)
-  const candidateRule = buildExperimentRule({
-    place: url.searchParams.get('place') ?? 'Church Street',
-    uvIndex: scenario.uvIndex,
-    crowding: scenario.crowding,
-    result: experiment,
-  })
-
-  return Response.json({
-    scenario,
+  const brief = need === 'low-uv'
+    ? 'Get me to East Richmond by 4:20pm with minimal direct sun.'
+    : need === 'step-free'
+      ? 'Get me to East Richmond by 4:20pm using a step-free route.'
+      : 'Get me to East Richmond by 4:20pm using the fastest route.'
+  const recommendationRequest: RecommendRequest = {
+    action: 'recommend', brief, context, useMemory: memoryEnabled,
+  }
+  const experimentRequest: ExperimentRequest = {
+    action: 'experiment',
+    brief: `Redistribute ${workers} workers from ${url.searchParams.get('place') || 'Church Street'} over ${numberParam(url, 'horizon', 15, 5, 60)} minutes. Protect low-UV and mobility needs.`,
+    context: { ...context, workers }, seed: numberParam(url, 'seed', 42, 1, 10_000),
+  }
+  const [decision, experiment] = await Promise.all([recommend(recommendationRequest), runExperiment(experimentRequest)])
+  const routeCode = (id: string) => id.endsWith('-a') ? 'A' : id.endsWith('-b') ? 'B' : 'C'
+  return json({
+    scenario: context,
     need,
     memoryEnabled,
-    experiment,
-    candidateRule,
-    recommendation: routes.find((route) => route.eligible)?.id ?? null,
-    routes: routes.map((route) => ({
-      id: route.id,
-      name: route.name,
-      eligible: route.eligible,
-      score: Number(route.score.toFixed(2)),
-      minutes: route.minutes,
-      directUv: route.directUv,
-      shadePct: route.shadePct,
-      remainingCapacity: route.capacity - route.predictedLoad,
-      reasons: route.reasons,
-      memoryRule: route.memoryMatch?.id ?? null,
+    experiment: experiment.experiment,
+    candidateRule: experiment.candidateRule,
+    recommendation: decision.recommendation ? routeCode(decision.recommendation.id) : null,
+    parser: decision.parser,
+    graph: decision.graph,
+    routes: decision.options.map((option) => ({
+      id: routeCode(option.id),
+      capacityUnitId: option.id,
+      name: option.name,
+      eligible: option.eligible,
+      score: option.score,
+      minutes: option.durationMinutes,
+      directUv: option.exposureIndex,
+      shadePct: option.shadePercent,
+      remainingCapacity: option.remainingCapacity,
+      reasons: option.reasons,
+      explanation: option.explanation,
+      memoryRule: option.memory.find((memory) => memory.source === 'operating-rule')?.id ?? null,
     })),
   })
 }
@@ -59,4 +86,16 @@ function numberParam(url: URL, name: string, fallback: number, min: number, max:
   if (raw === null || raw.trim() === '') return fallback
   const value = Number(raw)
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
+}
+
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  }
+}
+
+function json(value: unknown, status = 200) {
+  return Response.json(value, { status, headers: corsHeaders() })
 }

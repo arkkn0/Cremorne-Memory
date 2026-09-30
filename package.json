@@ -11,12 +11,14 @@
     "test:watch": "node ./node_modules/vitest/vitest.mjs",
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
     "qr": "node ./scripts/generate-qr.mjs",
-    "data:build": "node ./scripts/build-cremorne-data.mjs"
+    "data:build": "node ./scripts/build-cremorne-data.mjs",
+    "graph:seed": "node --import tsx ./scripts/seed-neo4j.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "leaflet": "^1.9.4",
     "lucide-react": "latest",
+    "neo4j-driver": "^6.0.0",
     "react": "latest",
     "react-dom": "latest",
     "react-leaflet": "^5.0.0",
@@ -35,6 +37,7 @@
     "eslint-plugin-react-refresh": "latest",
     "globals": "latest",
     "qrcode": "^1.5.4",
+    "tsx": "^4.20.6",
     "typescript-eslint": "^8.71.0",
     "vitest": "latest"
   }

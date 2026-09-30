@@ -1,110 +1,90 @@
 # Technical architecture
 
-## One loop
+## One product loop
 
 ```mermaid
 flowchart LR
-    I[Public + synthetic inputs] --> O[Observe]
-    O --> P[Predict state at time of use]
-    P --> R[Retrieve comparable Memory]
-    R --> M[Match in Capacity Graph]
-    M --> E[Explain eligible options]
-    E --> C[Worker chooses / CDH tests]
-    C --> X[Measure outcome]
-    X --> L[Learn operating rule]
-    L --> R
+  A[Natural-language brief + live context] --> B[Structured demand]
+  B --> C[Neo4j Capacity Graph]
+  C --> D[Memory retrieval]
+  D --> E[Capacity-aware match + rank]
+  E --> F[Concise explanation]
+  F --> G[Worker choice or CDH test]
+  G --> H[Measured outcome]
+  H --> I[Outcome + rule + exception write]
+  I --> D
 ```
 
-## Runtime components
+The three app views use this same loop:
 
-### Capacity Graph
+- **Live Proof** compresses it into a 30-second judge journey.
+- **Worker App** runs natural-language route and room requests.
+- **CDH Lab** runs controlled comparisons and publishes validated boundaries.
 
-Represents the relationships between:
+## Runtime
 
-```text
-Demand → requires → Functional Requirement
-Capacity Unit → belongs to → Place / Asset
-Capacity Unit → governed by → Access Rule / Owner
-Prediction → estimates → Capacity Unit state at time of use
-Outcome → resulted from → Decision / Intervention
-Operating Rule → applies within → Context + Deployment Boundary
-Operating Rule → contains → Exception + Confidence
+- React + TypeScript + Vite client
+- Node.js Vercel Function at `POST /api/decision`
+- OpenAI-compatible Structured Outputs for intent and constraint extraction
+- Neo4j JavaScript Driver 6 for capacity, outcome and Memory persistence
+- graph traversal and structured context/requirement similarity for GraphRAG retrieval
+- deterministic constraint, capacity and ranking calculations
+- LLM explanation grounded only in the parsed demand, current context and retrieved graph evidence
+
+If external credentials are absent, the same API contract uses a seeded in-memory graph and fallback parser. This keeps tests and offline review available without changing the product flow.
+
+## Neo4j schema
+
+```mermaid
+graph LR
+  D[Demand] -->|REQUIRES| R[Requirement]
+  X[Decision] -->|RESPONDS_TO| D
+  X -->|SELECTED| C[CapacityUnit]
+  C -->|LOCATED_AT| P[Place]
+  X -->|PRODUCED| O[Outcome]
+  C -->|HAS_OUTCOME| O
+  O -->|FOR_REQUIREMENT| R
+  O -->|UNDER_CONTEXT| K[Context]
+  Q[OperatingRule] -->|APPLIES_TO| C
+  Q -->|UNDER_CONTEXT| K
+  Q -->|HAS_EXCEPTION| E[Exception]
+  E -->|AFFECTS| R
+  Q -->|SUPPORTED_BY| V[Evidence]
+  O -->|SUGGESTS| N[CandidateRoute]
+  N -->|DERIVED_FROM| C
 ```
 
-The hackathon graph is represented as typed in-memory objects. The entity boundaries map directly to a future Neo4j model.
+`CapacityUnit` represents both movement and workspace capacity. A route or room enters the worker’s eligible set only after time, access, facilities, functional requirements and remaining capacity are satisfied.
 
-### Constraint engine
+`CandidateRoute` stores an opt-in walked geometry that differs from the known network and received `Better` feedback. It is created with `status: candidate`, remains outside recommendation queries, and can be validated later by CDH.
 
-Hard constraints establish the eligible set:
+## Decision actions
 
-- access authorisation and opening hours;
-- safe and remaining capacity;
-- step-free access and required facilities;
-- arrival window and maximum distance;
-- environmental thresholds;
-- applicable Memory exceptions.
+### `POST /api/decision` — `action: recommend`
 
-The engine is deterministic and tested. A language model is not part of eligibility.
+1. Parse the brief into `StructuredDemand`.
+2. Resolve the destination against graph places and aliases; ambiguous text returns a clarification instead of silently guessing.
+3. Query matching Capacity Units.
+4. Retrieve operating rules and outcomes matching the current context and functional requirements.
+5. Calculate eligibility, predicted demand, remaining capacity and rank.
+6. Generate a short graph-grounded explanation.
 
-### Prediction layer
+### `POST /api/decision` — `action: experiment`
 
-The MVP combines a controlled scenario with live temperature when available. It calculates:
+Runs the same demand, UV, horizon and seed against baseline and tested allocation policies. Returns route utilisation, aggregate outcomes, represented cohort outcomes and a candidate operating rule.
 
-- expected demand and remaining capacity;
-- route travel time;
-- relative direct UV exposure;
-- crowding at the expected time of use.
+### `POST /api/decision` — `action: outcome`
 
-The same scenario seed is used in the first-pass and Memory-aware comparison.
-
-### Operational Memory
-
-Each record contains:
-
-```ts
-Context
-+ Capacity / Intervention
-+ Outcome
-+ Functional Need
-+ Exception
-+ Deployment Boundary
-+ Evidence Type
-+ Confidence
-```
-
-The browser-local adapter makes the write/retrieve loop visible and persistent during the prototype. The deployed decision endpoint exposes the same domain engine. In a pilot, the adapter can be replaced with Neo4j/Aura without changing the decision contract.
-
-## API
-
-### `GET /api/decision`
-
-Parameters:
-
-- `need`: `standard`, `low-uv` or `step-free`
-- `memory`: `1` to retrieve the prototype local rule
-- `uv`, `temperature`, `crowding`, `workers`, `departure`
-- `seed`: deterministic experiment seed
-
-Returns:
-
-- scenario and functional need;
-- controlled experiment output for the requested worker count and seed;
-- recommended route;
-- eligible state for every route;
-- score, predicted exposure and remaining capacity;
-- human-readable reasons;
-- retrieved Memory rule identifier.
+Writes the decision, context, selected capacity, metrics and feedback. It can also publish a CDH operating rule or create an opt-in `CandidateRoute` from a better walked trace.
 
 ### `GET /api/health`
 
-Returns the deployed engine and evidence mode.
+Reports whether the running deployment is using Neo4j or the in-memory graph and LLM parsing or the fallback parser.
 
-## Deployment
+## Privacy and control
 
-The Vite client and edge decision endpoints deploy together on Vercel. A single deployment keeps the demo fast and avoids cross-service cold starts. No external secrets are required for the core proof.
-
-## Privacy
-
-- Functional constraints are stored instead of diagnoses.
-- Capacity metadata is exchanged instead of employee calendars.
-- Precinct Memory contains aggregate outcomes rather than named journeys.
+- Store functional needs rather than diagnoses.
+- Share capacity metadata rather than calendars or meeting details.
+- Request precise location only after the worker starts live guidance.
+- Share a newly walked path only after a separate opt-in action.
+- Keep one worker’s outcome in Personal Memory; create precinct operating rules through CDH’s controlled comparison.

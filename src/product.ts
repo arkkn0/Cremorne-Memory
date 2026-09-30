@@ -86,6 +86,7 @@ export interface ParsedRouteBrief {
 
 export interface ParsedSpaceBrief {
   people: number
+  durationMinutes: number
   requireHybrid: boolean
   requireAccessible: boolean
   requiredEquipment: string[]
@@ -151,6 +152,9 @@ export function parseSpaceBrief(brief: string): ParsedSpaceBrief {
   const people = Math.min(100, Math.max(1, Number(peopleMatch?.[1] ?? 6)))
   const requireHybrid = /hybrid|video|teams|zoom|av/.test(text)
   const requireAccessible = /accessible|step[- ]?free|wheelchair/.test(text)
+  const durationMatch = text.match(/(?:for\s*)?(\d{1,3})\s*(?:min|minute)/)
+  const durationHours = text.match(/(?:for\s*)?(\d+(?:\.\d+)?)\s*(?:hour|hr)/)
+  const durationMinutes = Math.min(240, Math.max(15, durationMatch ? Number(durationMatch[1]) : durationHours ? Number(durationHours[1]) * 60 : 60))
   const requiredEquipment: string[] = []
   if (/display|screen|monitor/.test(text)) requiredEquipment.push('Display')
   if (/projector/.test(text)) requiredEquipment.push('AV')
@@ -159,11 +163,11 @@ export function parseSpaceBrief(brief: string): ParsedSpaceBrief {
   if (/adjustable blinds|sun control|avoid direct sun/.test(text)) requiredEquipment.push('Adjustable blinds')
   if (/low[- ]?glare|avoid glare|glare sensitive/.test(text)) requiredEquipment.push('Low-glare lighting')
   const timeLabel = timeMatch ? normaliseClock(Number(timeMatch[1]), Number(timeMatch[2] ?? 0), timeMatch[3]) : '14:00'
-  const chips = [`${people} people`, timeLabel]
+  const chips = [`${people} people`, `${timeLabel} · ${durationMinutes} min`]
   if (requireHybrid) chips.push('Hybrid equipped')
   if (requireAccessible) chips.push('Accessible')
   chips.push(...requiredEquipment)
-  return { people, requireHybrid, requireAccessible, requiredEquipment, timeLabel, chips }
+  return { people, durationMinutes, requireHybrid, requireAccessible, requiredEquipment, timeLabel, chips }
 }
 
 export function parseExperimentBrief(brief: string): ParsedExperimentBrief {
@@ -297,6 +301,7 @@ export function findSpaces({
   requireAccessible,
   requiredEquipment = [],
   timeLabel = '14:00',
+  durationMinutes = 60,
   scope = 'all',
 }: {
   people: number
@@ -304,6 +309,7 @@ export function findSpaces({
   requireAccessible: boolean
   requiredEquipment?: string[]
   timeLabel?: string
+  durationMinutes?: number
   scope?: SpaceScope
 }) {
   return productContext.spaces.filter((space) => scope === 'all' || space.accessClass === scope).map((space) => {
@@ -322,15 +328,22 @@ export function findSpaces({
       if (!matched) blockers.push(`${equipment} not listed`)
     })
     if (space.availability.length === 0) blockers.push('No owner-provided demo window')
-    if (space.availability.length > 0 && !space.availability.some((window) => isTimeWithinWindow(timeLabel, window))) {
-      blockers.push(`Not available at ${timeLabel}`)
+    const endTime = addClockMinutes(timeLabel, durationMinutes)
+    if (space.availability.length > 0 && !space.availability.some((window) => isIntervalWithinWindow(timeLabel, endTime, window))) {
+      blockers.push(`Not available from ${timeLabel} to ${endTime}`)
     }
     return { ...space, eligible: blockers.length === 0, blockers }
   }).sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.capacity - b.capacity)
 }
 
-function isTimeWithinWindow(timeLabel: string, window: string) {
+function isIntervalWithinWindow(timeLabel: string, endTime: string, window: string) {
   const [start, end] = window.split(/[–-]/).map((value) => value.trim())
   if (!start || !end) return false
-  return timeLabel >= start && timeLabel < end
+  return timeLabel >= start && endTime <= end
+}
+
+function addClockMinutes(clock: string, minutes: number) {
+  const [hour, minute] = clock.split(':').map(Number)
+  const total = Math.min(1439, hour * 60 + minute + minutes)
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }

@@ -3,15 +3,31 @@ import handler from '../api/decision'
 import { evaluateProductRoutes } from '../src/product'
 
 describe('decision API contract', () => {
+  it('accepts a natural-language recommendation through POST', async () => {
+    const response = await handler(new Request('https://example.test/api/decision', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'recommend',
+        brief: 'Get me to East Richmond by 4:20pm and avoid direct sun.',
+        context: { uvIndex: 8.2, temperature: 31, crowding: 82, workers: 65, requestedAt: '2026-09-30T16:00:00+10:00' },
+        useMemory: true,
+      }),
+    }))
+    const body = await response.json()
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({ action: 'recommend', resolvedDestination: { id: 'east-richmond' }, recommendation: { name: 'Shadow Route C' } })
+  })
+
   it('returns Route B for the generic first pass', async () => {
-    const response = handler(new Request('https://example.test/api/decision?need=standard'))
+    const response = await handler(new Request('https://example.test/api/decision?need=standard'))
     const body = await response.json()
 
     expect(body.recommendation).toBe('B')
   })
 
   it('returns the controlled experiment from the shared engine', async () => {
-    const response = handler(new Request('https://example.test/api/decision?workers=300&seed=42'))
+    const response = await handler(new Request('https://example.test/api/decision?workers=300&seed=42'))
     const body = await response.json()
 
     expect(body.experiment).toMatchObject({
@@ -28,7 +44,7 @@ describe('decision API contract', () => {
   })
 
   it('feeds the API candidate rule into the next worker ranking', async () => {
-    const response = handler(new Request('https://example.test/api/decision?workers=300&seed=42&uv=8.2&crowding=92&place=Church%20Street'))
+    const response = await handler(new Request('https://example.test/api/decision?workers=300&seed=42&uv=8.2&crowding=92&place=Church%20Street'))
     const body = await response.json()
     const routes = evaluateProductRoutes({
       destination: 'east-richmond',
@@ -43,7 +59,7 @@ describe('decision API contract', () => {
   })
 
   it('uses saved Memory to remove a known bad match before ranking', async () => {
-    const response = handler(new Request('https://example.test/api/decision?need=low-uv&uv=8.2&crowding=82&memory=1'))
+    const response = await handler(new Request('https://example.test/api/decision?need=low-uv&uv=8.2&crowding=82&memory=1'))
     const body = await response.json()
     const routeB = body.routes.find((route: { id: string }) => route.id === 'B')
 

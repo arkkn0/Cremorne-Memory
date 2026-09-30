@@ -9,11 +9,11 @@ Cremorne Memory turns fragmented precinct signals into guided actions. A worker 
 ## Product surfaces
 
 - `/` — concise product landing page that explains one outcome and one four-step flow
-- `/app` — one product with a judge-first entry flow and two working surfaces:
-  - **Live demo:** a 30-second, four-step proof that a measured exception changes the next eligible set
-  - **Worker Guide:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, then record actual completion and lightweight outcome feedback as evidence
-  - **CDH Experiment:** define an intervention brief, run a controlled baseline comparison, measure precinct and subgroup effects, then publish an exception-aware operating rule
-- `/api/decision` — deterministic serverless decision endpoint used by the demonstrator
+- `/app` — one product with three connected views:
+  - **Live Proof:** a 30-second, four-step proof that a measured exception changes the next eligible set
+  - **Worker App:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, follow live guidance, and record the outcome
+  - **CDH Lab:** define an intervention, run a controlled baseline comparison, measure precinct and cohort effects, then publish the discovered boundary to Memory
+- `/api/decision` — one serverless endpoint for natural-language parsing, graph-grounded recommendation, controlled experiments and outcome writes
 - `/api/health` — deployment health endpoint
 
 No account or login is required. The guided proof writes to the same Memory used by the Worker app and CDH lab; it is not a separate animation.
@@ -44,7 +44,9 @@ The same pattern drives both use cases:
 - **Movement:** destination, deadline, functional need and time flexibility → route × departure time.
 - **Workspace:** people, time, equipment, sun/glare controls and accessibility → eligible room × time window → confirmed booking.
 
-Mia's journey is the hero application: a Cremorne worker with albinism, photosensitivity and low vision. Her route matching includes direct UV, glare, covered passages, arrival time and high-contrast guidance. Her workspace matching includes adjustable blinds, low-glare lighting and meeting equipment. The engine stores functional requirements rather than a medical diagnosis. Sub-minute hackathon interactions are recorded but excluded from the travel-time score; real observed duration contributes once the journey exceeds one minute.
+Mia's journey is the hero application: a Cremorne worker with albinism, photosensitivity and low vision. Her route matching includes direct UV, glare, covered passages, arrival time and high-contrast guidance. Her workspace matching includes adjustable blinds, low-glare lighting and meeting equipment. The graph stores functional requirements rather than a medical diagnosis.
+
+During a journey, the Worker App can record the walked geometry with explicit location permission. If a worker reports a better experience on a path that materially differs from the known route, they may share it as a `CandidateRoute`. Candidate paths stay outside the eligible set until CDH validates them; this lets real use discover small lanes or passages without turning one person’s trace into precinct guidance.
 
 ## Two Memory loops
 
@@ -58,7 +60,7 @@ The CDH experiment holds demand, conditions and seed constant while the decision
 1. the current flow across Routes A, B and C;
 2. a tested redistribution across the same three routes.
 
-The API returns both allocations, their aggregate and cohort outcomes, and a candidate operating rule. Publishing that rule stores the measured context, outcome and exception in browser Memory. The Worker Guide then consumes that exact rule object: when Mia's low-UV requirement and the current UV match its boundary, Route B leaves the eligible set before ranking.
+The API returns both allocations, their aggregate and cohort outcomes, and a candidate operating rule. Publishing that rule writes the measured context, outcome, evidence and exception to Neo4j when configured. The Worker App retrieves that graph neighbourhood on the next comparable request: when Mia's low-UV requirement and current UV match the stored boundary, Route B leaves the eligible set before ranking.
 
 The current intervention outputs are synthetic MVP measurements and are labelled that way in the product. They demonstrate the evaluation mechanism; they are not presented as field-validated impact.
 
@@ -103,9 +105,25 @@ Public / forecast / participating inputs
                     └─────────────────↺
 ```
 
-The working prototype uses typed TypeScript modules and browser persistence so the complete loop remains usable without external credentials. The serverless endpoint exposes the same deterministic rule logic.
+The deployed backend is organised as one end-to-end flow:
 
-`Capacity Graph` describes the current product data model; it does not claim a live Neo4j deployment. Neo4j is a compatible production persistence path for context, capacity, outcomes and exceptions. GraphRAG or an LLM can later translate unstructured policies and free text into structured constraints or explanations, while deterministic eligibility and measured outcomes remain the source of decisions.
+```text
+natural-language brief
+        ↓
+OpenAI Structured Outputs → structured demand
+        ↓
+Neo4j Capacity Graph → eligible route / room × time candidates
+        ↓
+context + requirement graph retrieval → relevant local outcomes and exceptions
+        ↓
+capacity-aware matching and ranking
+        ↓
+grounded, concise option explanation
+        ↓
+choice / controlled test → outcome write → next retrieval
+```
+
+Neo4j is used directly when `NEO4J_*` credentials are configured. An in-memory graph with the same repository contract keeps the project runnable for tests and offline review. The LLM parses and explains; graph constraints, capacity calculations and measured outcomes determine the eligible set and ranking.
 
 The three-stage illustrated Mia journey for the pre-screening deck is saved at `docs/pitch-assets/mia-user-journey-triptych.png`.
 
@@ -114,10 +132,11 @@ The three-stage illustrated Mia journey for the pre-screening deck is saved at `
 ```bash
 npm install
 npm run data:build
+npm run graph:seed
 npm run dev
 ```
 
-Open `http://localhost:4173` and select **Try the product**.
+Copy `.env.example` to `.env.local`, add your Neo4j and OpenAI-compatible credentials, then open `http://localhost:4173`. The Vite development server mounts the same `/api/decision` handler used by Vercel.
 
 ## Verify
 
@@ -129,4 +148,4 @@ npm run build
 
 ## Deployment
 
-The repository is configured for Vercel. Import the GitHub repository, keep the default Vite settings, and deploy. `/app` is rewritten to the single-page client while `/api/*` remains available to Vercel Functions.
+The repository is configured for Vercel. Add the variables from `.env.example` in the Vercel project, then deploy. `/app` is rewritten to the single-page client while `/api/*` remains available to Node.js Vercel Functions. Use `https://team-bubble.vercel.app/app` for the submission QR so judges enter the Live Proof immediately.

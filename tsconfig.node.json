@@ -8,7 +8,17 @@
     "skipLibCheck": true,
     "composite": true,
     "noEmit": true,
-    "strict": true
+    "strict": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "api/**/*.ts",
+    "server/**/*.ts",
+    "src/api-contracts.ts",
+    "src/domain.ts",
+    "src/engine.ts",
+    "src/cremorne-context.json"
+  ]
 }

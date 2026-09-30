@@ -14,7 +14,7 @@ Preference ranking happens after eligibility.
 
 ## Product surfaces
 
-### Worker view
+### Worker App
 
 Answers one question: **Which options are genuinely usable for me at the time I will use them?**
 
@@ -25,8 +25,10 @@ The worker sees:
 - the reason an option is inside or outside the eligible set;
 - relevant local evidence and its confidence;
 - the final choice remains with the worker.
+- the walked path can be visualised after arrival;
+- a materially different path with a `Better` outcome may be shared as a candidate for later CDH validation.
 
-### Precinct view
+### CDH Lab
 
 Answers a different question through the same model: **Which bounded intervention should we test, and what did Cremorne learn from it?**
 
