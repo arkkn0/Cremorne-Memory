@@ -10,10 +10,11 @@ Cremorne Memory turns fragmented precinct evidence into guided actions. A worker
 
 - `/` — concise product landing page that explains one outcome and one four-step flow
 - `/app` — one product with three connected views:
-  - **Live Proof:** a 30-second real-data walkthrough of one documented hotspot, two public pedestrian routes, Mia's functional need, and the field measurements required before a rule can be published
+  - **Live Proof:** a 30-second real-data walkthrough of one documented hotspot, three public pedestrian routes, Mia's functional need, and the field measurements that improve the next match
   - **Worker App:** describe a goal in natural language, choose a dynamically eligible route × departure-time or workspace action, follow live guidance, and record the outcome
   - **CDH Lab:** inspect the real public baseline, define the field outcome, and review repeated room or route evidence before it becomes shared guidance
-- `/api/decision` — one serverless endpoint for natural-language parsing, graph-grounded recommendation, outcome writes, candidate-route review, and repeated workspace-issue review
+- `/api/decision` — one serverless endpoint for natural-language parsing, graph-grounded recommendation, outcome writes, route-boundary review, candidate-route review, and repeated workspace-issue review
+- `/api/context` — same-origin adapter for the Open-Meteo forecast at Cremorne coordinates
 - `/api/health` — deployment health endpoint
 
 No account or login is required. The Live Proof does not create evidence. Memory is created only by recorded worker outcomes and validated CDH evidence.
@@ -66,7 +67,9 @@ rejected  → retained as evidence, excluded from ranking
 ## Two Memory loops
 
 - **Personal Memory:** observed completion time and worker feedback adjust the next route ranking for comparable journeys.
-- **Precinct Memory:** CDH publishes a rule only after a controlled comparison measures the average effect, subgroup guardrails and confidence.
+- **Precinct Memory:** repeated independent outcomes or a controlled comparison become shared guidance only after CDH review.
+
+Route feedback follows that boundary too. A worker's Worse rating remains personal. Three independent low-UV journeys under comparable UV create a route-boundary candidate; CDH can validate it into an operating rule that changes the next eligible set before ranking.
 
 Workspace feedback follows the same evidence boundary. One report updates only that worker's Personal Memory. Reports from multiple independent profiles create a review candidate. A CDH validation is required before the issue becomes cohort evidence and reweights future room recommendations for the relevant requirement.
 
@@ -167,7 +170,7 @@ npm run build
 npm run graph:verify-candidate
 ```
 
-`graph:verify-candidate` uses the configured Neo4j instance to record a shared journey, retrieve the pending candidate, validate it, and verify that a comparable recommendation can retrieve the new Capacity Unit. It fails if any stage of that loop is disconnected.
+`graph:verify-candidate` uses the configured Neo4j instance to record a shared journey, retrieve the pending candidate, validate it, and verify that a comparable recommendation can retrieve the new Capacity Unit. The automated suite also verifies the independent-report thresholds for route boundaries and room issues.
 
 ## Deployment
 

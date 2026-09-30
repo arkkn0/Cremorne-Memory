@@ -108,8 +108,11 @@ const outcomeSchema = z.object({
   candidateRouteName: boundedText(120).optional(),
   workspaceIssues: z.array(workspaceIssueSchema).max(10).optional(),
 }).strict().superRefine((value, context) => {
-  if (value.shareTrace && (value.feedback !== 'better' || !value.journeyTrace)) {
-    context.addIssue({ code: 'custom', message: 'A shared trace requires better feedback and at least three coordinates.' })
+  if (value.shareTrace && !value.journeyTrace) {
+    context.addIssue({ code: 'custom', message: 'A shared trace requires at least three coordinates.' })
+  }
+  if (value.shareTrace && value.feedback && value.feedback !== 'better') {
+    context.addIssue({ code: 'custom', message: 'A walked trace can be shared as a candidate only when it felt better.' })
   }
   if (value.workspaceIssues?.length && value.demand.intent !== 'workspace') {
     context.addIssue({ code: 'custom', message: 'Workspace issues require a workspace demand.' })
@@ -152,6 +155,18 @@ const workspaceIssueReviewSchema = z.object({
   reason: boundedText(1_000),
 }).strict()
 
+const routeExceptionsSchema = z.object({
+  action: z.literal('route-exceptions'),
+  status: z.enum(['collecting', 'candidate', 'validated', 'rejected']).optional(),
+}).strict()
+
+const routeExceptionReviewSchema = z.object({
+  action: z.literal('route-exception-review'),
+  exceptionId: id,
+  decision: z.enum(['validate', 'reject']),
+  reason: boundedText(1_000),
+}).strict()
+
 const decisionRequestSchema = z.discriminatedUnion('action', [
   recommendationSchema,
   outcomeSchema,
@@ -159,6 +174,8 @@ const decisionRequestSchema = z.discriminatedUnion('action', [
   candidateRouteReviewSchema,
   workspaceIssuesSchema,
   workspaceIssueReviewSchema,
+  routeExceptionsSchema,
+  routeExceptionReviewSchema,
 ])
 
 export function validateDecisionRequest(value: unknown):

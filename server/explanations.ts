@@ -71,9 +71,9 @@ function fallbackExplanations(demand: StructuredDemand, options: RankedCapacityO
     let explanation = option.reasons[0] || 'This option is ranked from the current conditions and your request.'
     if (option.eligible && demand.intent === 'movement') {
       const timing = `${option.durationMinutes} minutes`
-      const shade = option.shadePercent ? `${option.shadePercent}% shaded` : 'limited shade data'
-      explanation = `${option.name} takes ${timing}, is ${shade}, and has ${Math.max(0, option.remainingCapacity)} estimated capacity remaining.`
-      if (option.memory.length) explanation = `${option.memory[0].summary} ${option.name} is ranked using that local outcome.`
+      const canopy = option.shadePercent ? `${option.shadePercent}% canopy-adjacent` : 'with no mapped canopy nearby'
+      explanation = `${option.name} takes ${timing} and is ${canopy}.`
+      if (option.memory.length) explanation = `${option.memory[0].summary} That experience now changes this match.`
     }
     if (option.eligible && demand.intent === 'workspace') {
       explanation = `${option.name} fits ${demand.capacityRequired} people for the requested time and includes the required equipment.`
