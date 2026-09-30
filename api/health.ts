@@ -1,15 +1,14 @@
-import { graphConfigured } from '../server/graph'
-import { llmConfigured } from '../server/llm'
-
 export const config = { runtime: 'nodejs' }
 
 export function handleHealthRequest() {
+  const graphConfigured = Boolean(process.env.NEO4J_URI && process.env.NEO4J_USERNAME && process.env.NEO4J_PASSWORD)
+  const llmConfigured = Boolean(process.env.LLM_API_KEY && process.env.LLM_MODEL)
   return Response.json({
     product: 'Cremorne Memory',
     status: 'ready',
     decisionFlow: 'nlu-graph-memory-ranking-explanation-outcome',
-    graph: graphConfigured() ? 'neo4j' : 'in-memory-fallback',
-    nlu: llmConfigured() ? 'llm' : 'fallback-parser',
+    graph: graphConfigured ? 'neo4j' : 'in-memory-fallback',
+    nlu: llmConfigured ? 'llm' : 'fallback-parser',
     evidence: 'public-baseline-plus-synthetic-mvp',
   })
 }
