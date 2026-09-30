@@ -39,6 +39,7 @@ export interface DecisionContext {
   workers: number
   requestedAt: string
   acceptedRecommendations?: Record<string, number>
+  profileId?: string
 }
 
 export interface RetrievedMemory {
@@ -50,6 +51,39 @@ export interface RetrievedMemory {
   confidence: number
   applies: boolean
   source: 'operating-rule' | 'outcome'
+  scope?: 'personal' | 'cohort' | 'precinct'
+}
+
+export type CandidateRouteStatus = 'candidate' | 'under-validation' | 'validated' | 'rejected'
+
+export interface CandidateRouteRecord {
+  id: string
+  name: string
+  sourceCapacityUnitId: string
+  placeId: string
+  destinationId: string | null
+  status: CandidateRouteStatus
+  geometry: [number, number][]
+  createdAt: string
+  reviewedAt?: string
+  reviewReason?: string
+  feedback: 'better'
+  sampleCount: number
+  evidenceCount: number
+  requirement: string
+  metrics: Record<string, number>
+  validationConfidence?: number
+}
+
+export interface CandidateRouteEvidence {
+  durationMinutes?: number
+  distanceMetres?: number
+  shadePercent?: number
+  directUvFactor?: number
+  safeCapacity?: number
+  stepFree?: boolean
+  baselineDemandShare?: number
+  confidence?: number
 }
 
 export interface RankedCapacityOption {
@@ -152,5 +186,30 @@ export interface OutcomeResponse {
   candidateCapacityId?: string
 }
 
-export type DecisionRequest = RecommendRequest | ExperimentRequest | OutcomeRequest
-export type DecisionResponse = RecommendResponse | ExperimentResponse | OutcomeResponse
+export interface CandidateRoutesRequest {
+  action: 'candidate-routes'
+  status?: CandidateRouteStatus
+}
+
+export interface CandidateRoutesResponse {
+  action: 'candidate-routes'
+  graph: 'neo4j' | 'in-memory'
+  candidates: CandidateRouteRecord[]
+}
+
+export interface CandidateRouteReviewRequest {
+  action: 'candidate-route-review'
+  candidateCapacityId: string
+  decision: 'validate' | 'reject'
+  reason: string
+  evidence?: CandidateRouteEvidence
+}
+
+export interface CandidateRouteReviewResponse {
+  action: 'candidate-route-review'
+  graph: 'neo4j' | 'in-memory'
+  candidate: CandidateRouteRecord
+}
+
+export type DecisionRequest = RecommendRequest | ExperimentRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest
+export type DecisionResponse = RecommendResponse | ExperimentResponse | OutcomeResponse | CandidateRoutesResponse | CandidateRouteReviewResponse

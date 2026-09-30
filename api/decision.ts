@@ -4,7 +4,7 @@ export const config = { runtime: 'nodejs', maxDuration: 30 }
 
 export async function handleDecisionRequest(request: Request) {
   try {
-    const { recommend, recordOutcome, runExperiment } = await import('../server/decision-service.js')
+    const { listCandidateRoutes, recommend, recordOutcome, reviewCandidateRoute, runExperiment } = await import('../server/decision-service.js')
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders() })
     }
@@ -16,6 +16,10 @@ export async function handleDecisionRequest(request: Request) {
           ? await runExperiment(input)
           : input.action === 'outcome'
             ? await recordOutcome(input)
+            : input.action === 'candidate-routes'
+              ? await listCandidateRoutes(input)
+              : input.action === 'candidate-route-review'
+                ? await reviewCandidateRoute(input)
             : null
       if (!response) return json({ error: 'Unsupported action.' }, 400)
       return json(response)

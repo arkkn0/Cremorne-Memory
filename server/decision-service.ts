@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type {
+  CandidateRouteReviewRequest, CandidateRouteReviewResponse, CandidateRoutesRequest, CandidateRoutesResponse,
   ExperimentRequest, ExperimentResponse, OutcomeRequest, OutcomeResponse,
   RecommendRequest, RecommendResponse, StructuredDemand,
 } from '../src/api-contracts'
@@ -87,6 +88,40 @@ export async function recordOutcome(
     action: 'outcome', stored: true, graph: graph.backend,
     outcomeId: stored.outcomeId, memoryIds: stored.memoryIds,
     candidateCapacityId: stored.candidateCapacityId,
+  }
+}
+
+export async function listCandidateRoutes(
+  request: CandidateRoutesRequest,
+  repository: GraphRepository = getGraphRepository(),
+): Promise<CandidateRoutesResponse> {
+  const graph = await safeGraph(repository)
+  return {
+    action: 'candidate-routes',
+    graph: graph.backend,
+    candidates: await graph.listCandidateRoutes(request.status),
+  }
+}
+
+export async function reviewCandidateRoute(
+  request: CandidateRouteReviewRequest,
+  repository: GraphRepository = getGraphRepository(),
+): Promise<CandidateRouteReviewResponse> {
+  if (!request.candidateCapacityId?.trim()) throw new Error('A candidate route id is required.')
+  if (request.decision !== 'validate' && request.decision !== 'reject') {
+    throw new Error('Candidate route decision must be validate or reject.')
+  }
+  if (!request.reason?.trim()) throw new Error('A validation or rejection reason is required.')
+  const graph = await safeGraph(repository)
+  return {
+    action: 'candidate-route-review',
+    graph: graph.backend,
+    candidate: await graph.reviewCandidateRoute({
+      candidateCapacityId: request.candidateCapacityId.trim(),
+      decision: request.decision,
+      reason: request.reason.trim(),
+      evidence: request.evidence,
+    }),
   }
 }
 

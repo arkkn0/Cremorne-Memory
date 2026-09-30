@@ -1,4 +1,7 @@
-import type { DecisionContext, DemandIntent, RetrievedMemory, StructuredDemand } from '../src/api-contracts'
+import type {
+  CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
+  DecisionContext, DemandIntent, RetrievedMemory, StructuredDemand,
+} from '../src/api-contracts'
 import type { MemoryRule } from '../src/domain'
 
 export interface GraphPlace {
@@ -61,5 +64,12 @@ export interface GraphRepository {
   resolvePlace(raw: string): Promise<PlaceResolution>
   retrieve(demand: StructuredDemand, context: DecisionContext, useMemory: boolean): Promise<GraphNeighbourhood>
   recordOutcome(input: GraphOutcomeWrite): Promise<{ outcomeId: string; memoryIds: string[]; candidateCapacityId?: string }>
+  listCandidateRoutes(status?: CandidateRouteStatus): Promise<CandidateRouteRecord[]>
+  reviewCandidateRoute(input: {
+    candidateCapacityId: string
+    decision: 'validate' | 'reject'
+    reason: string
+    evidence?: CandidateRouteEvidence
+  }): Promise<CandidateRouteRecord>
 }
 

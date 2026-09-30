@@ -1,5 +1,8 @@
 import neo4j, { type Driver, type QueryResult, type RecordShape } from 'neo4j-driver'
-import type { DecisionContext, RetrievedMemory, StructuredDemand } from '../src/api-contracts'
+import type {
+  CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
+  DecisionContext, RetrievedMemory, StructuredDemand,
+} from '../src/api-contracts'
 import type { GraphCapacityUnit, GraphNeighbourhood, GraphOutcomeWrite, GraphPlace, GraphRepository, PlaceResolution } from './graph-types'
 import { DEFAULT_CAPACITY_UNITS, DEFAULT_MEMORIES, DEFAULT_PLACES, WORKSPACE_MEMORY } from './default-graph.js'
 
@@ -44,13 +47,39 @@ function relevantRequirementKeys(demand: StructuredDemand) {
   return keys.length ? keys : ['standard']
 }
 
+function primaryRequirement(demand: StructuredDemand) {
+  return demand.requirements.lowUv ? 'low-uv'
+    : demand.requirements.stepFree || demand.requirements.accessible ? 'mobility'
+      : demand.intent === 'workspace' && demand.preferences.uv === 'lower' ? 'low-glare'
+        : 'standard'
+}
+
+function candidateCapacity(source: GraphCapacityUnit, candidate: CandidateRouteRecord, evidence: CandidateRouteEvidence = {}): GraphCapacityUnit {
+  return {
+    ...source,
+    id: candidate.id,
+    productId: candidate.id,
+    name: candidate.name,
+    routeCode: undefined,
+    durationMinutes: evidence.durationMinutes ?? source.durationMinutes,
+    distanceMetres: evidence.distanceMetres ?? source.distanceMetres,
+    shadePercent: evidence.shadePercent ?? source.shadePercent,
+    directUvFactor: evidence.directUvFactor ?? source.directUvFactor,
+    stepFree: evidence.stepFree ?? source.stepFree,
+    safeCapacity: evidence.safeCapacity ?? source.safeCapacity,
+    baselineDemandShare: evidence.baselineDemandShare ?? 0.05,
+    acceptedRecommendations: 0,
+    facilities: [...new Set([...source.facilities, 'Worker-discovered path'])],
+  }
+}
+
 export class InMemoryCapacityGraph implements GraphRepository {
   readonly backend = 'in-memory' as const
   private readonly places = structuredClone(DEFAULT_PLACES)
-  private readonly capacities = structuredClone(DEFAULT_CAPACITY_UNITS)
-  private memories = structuredClone([...DEFAULT_MEMORIES, WORKSPACE_MEMORY])
+  private capacities: GraphCapacityUnit[] = structuredClone(DEFAULT_CAPACITY_UNITS)
+  private memories: Array<RetrievedMemory & { profileId?: string }> = structuredClone([...DEFAULT_MEMORIES, WORKSPACE_MEMORY])
   private outcomes: GraphOutcomeWrite[] = []
-  private candidateRoutes: Array<{ id: string; sourceCapacityUnitId: string; trace: [number, number][] }> = []
+  private candidateRoutes: CandidateRouteRecord[] = []
 
   async ensureSeeded() {}
 
@@ -69,6 +98,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
       if (!candidates.some((candidate) => candidate.id === memory.capacityUnitId)) return false
       if (!requirements.includes(memory.requirement)) return false
       if (memory.source === 'operating-rule' && context.uvIndex < 7) return false
+      if (memory.scope === 'personal' && (!context.profileId || memory.profileId !== context.profileId)) return false
       return true
     }) : []
     return { backend: this.backend, candidates: structuredClone(candidates), memories: structuredClone(memories) }
@@ -78,10 +108,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
     this.outcomes.push(structuredClone(input))
     const memoryIds: string[] = []
     if (input.feedback) {
-      const requirement = input.demand.requirements.lowUv ? 'low-uv'
-        : input.demand.requirements.stepFree ? 'mobility'
-          : input.demand.intent === 'workspace' && input.demand.preferences.uv === 'lower' ? 'low-glare'
-            : 'standard'
+      const requirement = primaryRequirement(input.demand)
       const id = input.id
       this.memories = [{
         id,
@@ -92,6 +119,8 @@ export class InMemoryCapacityGraph implements GraphRepository {
         confidence: 0.55,
         applies: true,
         source: 'outcome',
+        scope: 'personal',
+        profileId: input.context.profileId,
       }, ...this.memories]
       memoryIds.push(id)
     }
@@ -107,6 +136,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
           confidence: input.candidateRule!.confidence,
           applies: true,
           source: 'operating-rule',
+          scope: 'precinct',
         }, ...this.memories.filter((memory) => !(memory.id === input.candidateRule!.id && memory.capacityUnitId === capacity.id))]
       })
       memoryIds.push(input.candidateRule.id)
@@ -114,13 +144,65 @@ export class InMemoryCapacityGraph implements GraphRepository {
     let candidateCapacityId: string | undefined
     if (input.shareTrace && input.feedback === 'better' && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= 3) {
       candidateCapacityId = `candidate-route-${input.id}`
+      const source = this.capacities.find((capacity) => capacity.id === input.capacityUnitId)
+      if (!source) throw new Error(`Source capacity ${input.capacityUnitId} was not found.`)
       this.candidateRoutes.push({
         id: candidateCapacityId,
+        name: input.candidateRouteName || 'Worker-discovered path',
         sourceCapacityUnitId: input.capacityUnitId,
-        trace: structuredClone(input.journeyTrace!),
+        placeId: source.placeId,
+        destinationId: source.destinationId ?? null,
+        status: 'candidate',
+        geometry: structuredClone(input.journeyTrace!),
+        createdAt: new Date().toISOString(),
+        feedback: 'better',
+        sampleCount: input.journeyTrace!.length,
+        evidenceCount: 1,
+        requirement: primaryRequirement(input.demand),
+        metrics: structuredClone(input.metrics),
       })
     }
     return { outcomeId: input.id, memoryIds: [...new Set(memoryIds)], candidateCapacityId }
+  }
+
+  async listCandidateRoutes(status?: CandidateRouteStatus) {
+    return structuredClone(this.candidateRoutes.filter((candidate) => !status || candidate.status === status))
+  }
+
+  async reviewCandidateRoute(input: {
+    candidateCapacityId: string
+    decision: 'validate' | 'reject'
+    reason: string
+    evidence?: CandidateRouteEvidence
+  }) {
+    const candidate = this.candidateRoutes.find((item) => item.id === input.candidateCapacityId)
+    if (!candidate) throw new Error(`Candidate route ${input.candidateCapacityId} was not found.`)
+    if (candidate.status === 'validated' || candidate.status === 'rejected') {
+      throw new Error(`Candidate route ${candidate.id} has already been ${candidate.status}.`)
+    }
+    candidate.status = input.decision === 'validate' ? 'validated' : 'rejected'
+    candidate.reviewedAt = new Date().toISOString()
+    candidate.reviewReason = input.reason
+    candidate.validationConfidence = input.evidence?.confidence
+    candidate.evidenceCount += 1
+
+    if (candidate.status === 'validated') {
+      const source = this.capacities.find((capacity) => capacity.id === candidate.sourceCapacityUnitId)
+      if (!source) throw new Error(`Source capacity ${candidate.sourceCapacityUnitId} was not found.`)
+      this.capacities = [...this.capacities.filter((capacity) => capacity.id !== candidate.id), candidateCapacity(source, candidate, input.evidence)]
+      this.memories = [{
+        id: `validation-${candidate.id}`,
+        capacityUnitId: candidate.id,
+        requirement: candidate.requirement,
+        summary: `CDH validated this worker-discovered route: ${input.reason}`,
+        effect: -6,
+        confidence: input.evidence?.confidence ?? 0.7,
+        applies: true,
+        source: 'outcome',
+        scope: 'cohort',
+      }, ...this.memories]
+    }
+    return structuredClone(candidate)
   }
 }
 
@@ -321,10 +403,12 @@ export class Neo4jCapacityGraph implements GraphRepository {
     const outcomeResult = await this.run(`
       MATCH (capacity:CapacityUnit)-[:HAS_OUTCOME]->(outcome:Outcome)-[:FOR_REQUIREMENT]->(requirement:Requirement)
       WHERE capacity.id IN $ids AND requirement.key IN $requirements
+        AND (coalesce(outcome.scope, 'cohort') <> 'personal'
+          OR ($profileId <> '' AND outcome.profileId = $profileId))
       RETURN capacity.id AS capacityId, outcome, requirement.key AS requirementKey
       ORDER BY outcome.createdAt DESC
       LIMIT 20
-    `, { ids, requirements })
+    `, { ids, requirements, profileId: context.profileId || '' })
 
     const memories: RetrievedMemory[] = [
       ...ruleResult.records.map((record) => {
@@ -333,6 +417,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
           id: String(rule.id), capacityUnitId: String(record.get('capacityId')),
           requirement: String(record.get('requirementKey')), summary: String(record.get('exceptionSummary') || rule.summary),
           effect: toNumber(rule.effect), confidence: toNumber(rule.confidence), applies: true, source: 'operating-rule' as const,
+          scope: 'precinct' as const,
         }
       }),
       ...outcomeResult.records.map((record) => {
@@ -341,6 +426,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
           id: String(outcome.id), capacityUnitId: String(record.get('capacityId')),
           requirement: String(record.get('requirementKey')), summary: String(outcome.summary || `A comparable user rated this option ${outcome.feedback}.`),
           effect: toNumber(outcome.effect), confidence: toNumber(outcome.confidence, 0.55), applies: true, source: 'outcome' as const,
+          scope: String(outcome.scope || 'cohort') as 'personal' | 'cohort' | 'precinct',
         }
       }),
     ]
@@ -349,10 +435,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
 
   async recordOutcome(input: GraphOutcomeWrite) {
     await this.ensureSeeded()
-    const requirement = input.demand.requirements.lowUv ? 'low-uv'
-      : input.demand.requirements.stepFree ? 'mobility'
-        : input.demand.intent === 'workspace' && input.demand.preferences.uv === 'lower' ? 'low-glare'
-          : 'standard'
+    const requirement = primaryRequirement(input.demand)
     const feedbackEffect = input.feedback === 'worse' ? 25 : input.feedback === 'better' ? -8 : 0
     await this.run(`
       MATCH (capacity:CapacityUnit {id: $capacityUnitId})
@@ -366,7 +449,8 @@ export class Neo4jCapacityGraph implements GraphRepository {
       MERGE (outcome:Outcome {id: $outcomeId})
       SET outcome.name = $outcomeName, outcome.feedback = $feedback, outcome.metricsJson = $metricsJson,
           outcome.effect = $feedbackEffect, outcome.confidence = 0.55,
-          outcome.summary = $summary, outcome.createdAt = $createdAt
+          outcome.summary = $summary, outcome.createdAt = $createdAt,
+          outcome.scope = 'personal', outcome.profileId = $profileId
       MERGE (demand)-[:REQUIRES]->(requirement)
       MERGE (decision)-[:RESPONDS_TO]->(demand)
       MERGE (decision)-[:SELECTED]->(capacity)
@@ -381,6 +465,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
       outcomeId: input.id, feedback: input.feedback || 'measured', metricsJson: JSON.stringify(input.metrics),
       outcomeName: input.feedback ? `${input.feedback[0].toUpperCase()}${input.feedback.slice(1)} journey outcome` : 'Measured intervention outcome',
       feedbackEffect, summary: input.feedback ? `A comparable user rated this option ${input.feedback}.` : 'Measured outcome recorded.',
+      profileId: input.context.profileId || '',
       createdAt: new Date().toISOString(),
     })
 
@@ -423,11 +508,25 @@ export class Neo4jCapacityGraph implements GraphRepository {
         MATCH (source:CapacityUnit {id: $sourceCapacityUnitId})-[:LOCATED_AT]->(place:Place)
         MATCH (outcome:Outcome {id: $outcomeId})
         MERGE (candidate:CapacityUnit:CandidateRoute {id: $candidateCapacityId})
-        SET candidate.kind = 'movement',
+        SET candidate.kind = 'movement', candidate.productId = $candidateCapacityId,
             candidate.status = 'candidate',
             candidate.name = $name,
+            candidate.destinationId = source.destinationId,
+            candidate.durationMinutes = coalesce($durationMinutes, source.durationMinutes),
+            candidate.distanceMetres = source.distanceMetres,
+            candidate.shadePercent = source.shadePercent,
+            candidate.directUvFactor = source.directUvFactor,
+            candidate.stepFree = source.stepFree,
+            candidate.safeCapacity = source.safeCapacity,
+            candidate.baselineDemandShare = 0.05,
+            candidate.acceptedRecommendations = 0,
+            candidate.facilities = source.facilities + ['Worker-discovered path'],
+            candidate.availability = source.availability,
             candidate.geometryJson = $geometryJson,
             candidate.sampleCount = $sampleCount,
+            candidate.evidenceCount = 1,
+            candidate.requirement = $requirement,
+            candidate.metricsJson = $metricsJson,
             candidate.feedback = 'better',
             candidate.createdAt = $createdAt
         MERGE (candidate)-[:LOCATED_AT]->(place)
@@ -438,12 +537,104 @@ export class Neo4jCapacityGraph implements GraphRepository {
         outcomeId: input.id,
         candidateCapacityId,
         name: input.candidateRouteName || 'Worker-discovered path',
+        durationMinutes: input.metrics.predictedMinutes ?? null,
         geometryJson: JSON.stringify(input.journeyTrace),
         sampleCount: input.journeyTrace!.length,
+        requirement,
+        metricsJson: JSON.stringify(input.metrics),
         createdAt: new Date().toISOString(),
       })
     }
     return { outcomeId: input.id, memoryIds: [...new Set(memoryIds)], candidateCapacityId }
+  }
+
+  async listCandidateRoutes(status?: CandidateRouteStatus) {
+    await this.ensureSeeded()
+    const result = await this.run(`
+      MATCH (candidate:CandidateRoute)-[:DERIVED_FROM]->(source:CapacityUnit)
+      MATCH (candidate)-[:LOCATED_AT]->(place:Place)
+      WHERE $status = '' OR candidate.status = $status
+      RETURN candidate, source.id AS sourceCapacityUnitId, place.id AS placeId
+      ORDER BY candidate.createdAt DESC
+    `, { status: status || '' })
+    return result.records.map((record) => candidateRecord(
+      properties(record.get('candidate')),
+      String(record.get('sourceCapacityUnitId')),
+      String(record.get('placeId')),
+    ))
+  }
+
+  async reviewCandidateRoute(input: {
+    candidateCapacityId: string
+    decision: 'validate' | 'reject'
+    reason: string
+    evidence?: CandidateRouteEvidence
+  }) {
+    await this.ensureSeeded()
+    const status = input.decision === 'validate' ? 'validated' : 'rejected'
+    const reviewedAt = new Date().toISOString()
+    const evidence = input.evidence ?? {}
+    const result = await this.run(`
+      MATCH (candidate:CandidateRoute {id: $candidateCapacityId})-[:DERIVED_FROM]->(source:CapacityUnit)
+      MATCH (candidate)-[:LOCATED_AT]->(place:Place)
+      WHERE candidate.status IN ['candidate', 'under-validation']
+      SET candidate.status = $status,
+          candidate.reviewedAt = $reviewedAt,
+          candidate.reviewReason = $reason,
+          candidate.validationConfidence = $confidence,
+          candidate.evidenceCount = coalesce(candidate.evidenceCount, 1) + 1,
+          candidate.durationMinutes = CASE WHEN $status = 'validated' THEN coalesce($durationMinutes, candidate.durationMinutes, source.durationMinutes) ELSE candidate.durationMinutes END,
+          candidate.distanceMetres = CASE WHEN $status = 'validated' THEN coalesce($distanceMetres, candidate.distanceMetres, source.distanceMetres) ELSE candidate.distanceMetres END,
+          candidate.shadePercent = CASE WHEN $status = 'validated' THEN coalesce($shadePercent, candidate.shadePercent, source.shadePercent) ELSE candidate.shadePercent END,
+          candidate.directUvFactor = CASE WHEN $status = 'validated' THEN coalesce($directUvFactor, candidate.directUvFactor, source.directUvFactor) ELSE candidate.directUvFactor END,
+          candidate.safeCapacity = CASE WHEN $status = 'validated' THEN coalesce($safeCapacity, candidate.safeCapacity, source.safeCapacity) ELSE candidate.safeCapacity END,
+          candidate.stepFree = CASE WHEN $status = 'validated' THEN coalesce($stepFree, candidate.stepFree, source.stepFree) ELSE candidate.stepFree END,
+          candidate.baselineDemandShare = CASE WHEN $status = 'validated' THEN coalesce($baselineDemandShare, candidate.baselineDemandShare, 0.05) ELSE candidate.baselineDemandShare END
+      MERGE (validation:Evidence {id: 'validation-' + candidate.id})
+      SET validation.kind = 'cdh-route-validation', validation.decision = $status,
+          validation.reason = $reason, validation.confidence = $confidence,
+          validation.createdAt = $reviewedAt
+      MERGE (candidate)-[:REVIEWED_BY]->(validation)
+      FOREACH (_ IN CASE WHEN $status = 'validated' THEN [1] ELSE [] END |
+        MERGE (requirement:Requirement {key: candidate.requirement})
+        MERGE (outcome:Outcome {id: 'validation-outcome-' + candidate.id})
+        SET outcome.name = 'CDH route validation', outcome.feedback = 'better',
+            outcome.scope = 'cohort', outcome.effect = -6.0,
+            outcome.confidence = coalesce(candidate.validationConfidence, 0.7),
+            outcome.summary = 'CDH validated this worker-discovered route: ' + candidate.reviewReason,
+            outcome.createdAt = candidate.reviewedAt
+        MERGE (candidate)-[:HAS_OUTCOME]->(outcome)
+        MERGE (outcome)-[:FOR_REQUIREMENT]->(requirement)
+      )
+      RETURN candidate, source.id AS sourceCapacityUnitId, place.id AS placeId
+    `, {
+      candidateCapacityId: input.candidateCapacityId, status, reviewedAt, reason: input.reason,
+      confidence: evidence.confidence ?? null, durationMinutes: evidence.durationMinutes ?? null,
+      distanceMetres: evidence.distanceMetres ?? null, shadePercent: evidence.shadePercent ?? null,
+      directUvFactor: evidence.directUvFactor ?? null, safeCapacity: evidence.safeCapacity ?? null,
+      stepFree: evidence.stepFree ?? null, baselineDemandShare: evidence.baselineDemandShare ?? null,
+    })
+    const record = result.records[0]
+    if (!record) throw new Error(`Candidate route ${input.candidateCapacityId} was not found or has already been reviewed.`)
+    return candidateRecord(properties(record.get('candidate')), String(record.get('sourceCapacityUnitId')), String(record.get('placeId')))
+  }
+}
+
+function candidateRecord(data: Record<string, unknown>, sourceCapacityUnitId: string, placeId: string): CandidateRouteRecord {
+  const parseJson = <T>(value: unknown, fallback: T): T => {
+    try { return JSON.parse(String(value)) as T } catch { return fallback }
+  }
+  const geometry = parseJson<[number, number][]>(data.geometryJson || '[]', [])
+  const metrics = parseJson<Record<string, number>>(data.metricsJson || '{}', {})
+  return {
+    id: String(data.id), name: String(data.name), sourceCapacityUnitId, placeId,
+    destinationId: data.destinationId ? String(data.destinationId) : null,
+    status: String(data.status) as CandidateRouteStatus, geometry,
+    createdAt: String(data.createdAt), reviewedAt: data.reviewedAt ? String(data.reviewedAt) : undefined,
+    reviewReason: data.reviewReason ? String(data.reviewReason) : undefined,
+    feedback: 'better', sampleCount: toNumber(data.sampleCount), evidenceCount: toNumber(data.evidenceCount, 1),
+    requirement: String(data.requirement || 'standard'), metrics,
+    validationConfidence: data.validationConfidence == null ? undefined : toNumber(data.validationConfidence),
   }
 }
 

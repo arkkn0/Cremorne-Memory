@@ -75,6 +75,7 @@ export const DEFAULT_MEMORIES: RetrievedMemory[] = DEFAULT_CAPACITY_UNITS
     confidence: FIRST_EXCEPTION.confidence,
     applies: true,
     source: 'operating-rule' as const,
+    scope: 'precinct' as const,
   }))
 
 export const WORKSPACE_MEMORY: RetrievedMemory = {
@@ -86,5 +87,6 @@ export const WORKSPACE_MEMORY: RetrievedMemory = {
   confidence: 0.76,
   applies: true,
   source: 'outcome',
+  scope: 'cohort',
 }
 

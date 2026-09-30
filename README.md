@@ -48,6 +48,21 @@ Mia's journey is the hero application: a Cremorne worker with albinism, photosen
 
 During a journey, the Worker App can record the walked geometry with explicit location permission. If a worker reports a better experience on a path that materially differs from the known route, they may share it as a `CandidateRoute`. Candidate paths stay outside the eligible set until CDH validates them; this lets real use discover small lanes or passages without turning one person’s trace into precinct guidance.
 
+The candidate lifecycle is implemented through the existing Decision API:
+
+```text
+better journey + shared trace
+          ↓
+CandidateRoute (candidate)
+          ↓
+CDH review + supporting evidence
+          ↓
+validated → rankable CapacityUnit
+rejected  → retained as evidence, excluded from ranking
+```
+
+`candidate-routes` lists reviewable paths and `candidate-route-review` validates or rejects one. A validated path keeps its recorded geometry, inherits the source route's operational fields, accepts reviewed evidence such as duration, shade and safe capacity, and becomes discoverable through the same graph query as Routes A, B and C.
+
 ## Two Memory loops
 
 - **Personal Memory:** observed completion time and worker feedback adjust the next route ranking for comparable journeys.
@@ -144,7 +159,10 @@ Copy `.env.example` to `.env.local`, add your Neo4j and OpenAI-compatible creden
 npm run lint
 npm test
 npm run build
+npm run graph:verify-candidate
 ```
+
+`graph:verify-candidate` uses the configured Neo4j instance to record a shared journey, retrieve the pending candidate, validate it, and verify that a comparable recommendation can retrieve the new Capacity Unit. It fails if any stage of that loop is disconnected.
 
 ## Deployment
 

@@ -1,4 +1,8 @@
 import type {
+  CandidateRouteReviewRequest,
+  CandidateRouteReviewResponse,
+  CandidateRoutesRequest,
+  CandidateRoutesResponse,
   DecisionContext,
   ExperimentRequest,
   ExperimentResponse,
@@ -8,7 +12,7 @@ import type {
   RecommendResponse,
 } from './api-contracts'
 
-async function decisionRequest<T>(request: RecommendRequest | ExperimentRequest | OutcomeRequest): Promise<T> {
+async function decisionRequest<T>(request: RecommendRequest | ExperimentRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest): Promise<T> {
   const response = await fetch('/api/decision', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -31,6 +35,14 @@ export function runControlledExperiment(input: Omit<ExperimentRequest, 'action'>
 
 export function recordGraphOutcome(input: Omit<OutcomeRequest, 'action'>) {
   return decisionRequest<OutcomeResponse>({ action: 'outcome', ...input })
+}
+
+export function getCandidateRoutes(input: Omit<CandidateRoutesRequest, 'action'> = {}) {
+  return decisionRequest<CandidateRoutesResponse>({ action: 'candidate-routes', ...input })
+}
+
+export function reviewCandidateRoute(input: Omit<CandidateRouteReviewRequest, 'action'>) {
+  return decisionRequest<CandidateRouteReviewResponse>({ action: 'candidate-route-review', ...input })
 }
 
 export function currentDecisionContext({

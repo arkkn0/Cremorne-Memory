@@ -67,4 +67,15 @@ describe('decision API contract', () => {
     expect(routeB.eligible).toBe(false)
     expect(routeB.memoryRule).toBe('church-st-high-uv-route-b')
   })
+
+  it('lists candidate routes through the shared Decision API', async () => {
+    const response = await handler(new Request('https://example.test/api/decision', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'candidate-routes', status: 'candidate' }),
+    }))
+    const body = await response.json()
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({ action: 'candidate-routes', graph: 'in-memory' })
+    expect(Array.isArray(body.candidates)).toBe(true)
+  })
 })
