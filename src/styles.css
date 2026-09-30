@@ -410,7 +410,7 @@ img, svg { display: block; max-width: 100%; }
 
 .route-experience { height: calc(100vh - 172px); display: grid; grid-template-columns: 420px minmax(0,1fr); overflow: hidden; border: 1px solid rgba(32,37,33,.1); border-radius: 18px; background: #fff; box-shadow: 0 16px 40px rgba(30,38,31,.07); }
 .journey-panel { min-height: 0; overflow-y: auto; padding: 20px 22px 24px; border-right: 1px solid rgba(32,37,33,.1); }
-.journey-progress { display: grid; grid-template-columns: repeat(3,1fr); gap: 0; margin-bottom: 28px; }
+.journey-progress { display: grid; grid-template-columns: repeat(4,1fr); gap: 0; margin-bottom: 28px; }
 .journey-progress > div { position: relative; display: grid; justify-items: center; gap: 5px; color: #9ca39d; font-size: 8px; }
 .journey-progress > div:not(:last-child)::after { content: ''; position: absolute; left: calc(50% + 14px); right: calc(-50% + 14px); top: 11px; height: 2px; background: #dfe3de; }
 .journey-progress > div.is-on:not(:last-child)::after { background: #1d7f69; }
@@ -1056,4 +1056,70 @@ img, svg { display: block; max-width: 100%; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* Finals product pass — one coherent, live worker journey. */
+.journey-actions { grid-template-columns: 1fr; }
+.journey-tracking-card { display: flex; align-items: flex-start; gap: 11px; margin: 26px 0 14px; padding: 14px; border: 1px solid rgba(29,127,105,.15); border-radius: 13px; color: #1d7f69; background: #e9f5f0; }
+.journey-tracking-card > svg { flex: 0 0 auto; width: 22px; height: 22px; }
+.journey-tracking-card > div { display: grid; gap: 3px; }
+.journey-tracking-card span { font-size: 7px; letter-spacing: .11em; font-weight: 900; }
+.journey-tracking-card strong { color: #202521; font-size: 11px; }
+.journey-tracking-card small { color: #65746c; font-size: 8px; line-height: 1.4; }
+.journey-tracking-card.is-starting > svg { animation: live-pulse 1.4s ease-out infinite; }
+.journey-tracking-card.is-unavailable, .journey-tracking-card.is-outside-area { color: #b45b42; border-color: rgba(255,101,66,.2); background: #fff2ed; }
+.trace-preview path { filter: none; }
+.trace-preview .trace-preview__planned { stroke: #aeb8b0; stroke-width: 4; stroke-dasharray: 8 6; }
+.trace-preview .trace-preview__actual { stroke: #1d7f69; stroke-width: 6; filter: drop-shadow(0 4px 5px rgba(29,127,105,.16)); }
+.trace-preview.planned-only circle { fill: #fff; stroke: #69736b; }
+.route-summary-panel { position: absolute; z-index: 850; right: 16px; top: 16px; width: 270px; display: grid; gap: 10px; padding: 18px; border: 1px solid rgba(32,37,33,.1); border-radius: 16px; background: rgba(255,253,248,.96); box-shadow: 0 18px 44px rgba(31,38,32,.15); backdrop-filter: blur(8px); }
+.route-summary-panel h2 { margin: -3px 0 2px; font-family: 'DM Serif Display'; font-size: 24px; line-height: 1; font-weight: 400; }
+.route-summary-metrics { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; }
+.route-summary-metrics div { display: grid; gap: 2px; padding: 9px 5px; border-radius: 9px; background: #eef2ed; text-align: center; }
+.route-summary-metrics strong { font-size: 13px; }
+.route-summary-metrics span { color: #6f7870; font-size: 6px; }
+.route-summary-panel p { display: grid; gap: 4px; margin: 0; color: #69736b; font-size: 8px; line-height: 1.45; }
+.route-summary-panel p strong { color: #202521; font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }
+.route-memory-note { display: flex; align-items: center; gap: 7px; padding: 9px; border-radius: 9px; color: #155d4e; background: #dff1e9; font-size: 7px; font-weight: 800; }
+
+.capacity-address { position: absolute; z-index: 2; left: 18px; right: 18px; top: 18px; min-height: 54px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid rgba(32,37,33,.1); border-radius: 12px; background: rgba(255,255,255,.9); box-shadow: 0 7px 20px rgba(31,38,32,.08); }
+.capacity-address > svg { color: #1d7f69; }
+.capacity-address > span { display: grid; gap: 2px; }
+.capacity-address small { color: #7c847d; font-size: 6px; letter-spacing: .1em; font-weight: 800; }
+.capacity-address strong { font-size: 9px; }
+.capacity-address b { margin-left: auto; padding: 6px 8px; border-radius: 8px; background: #ffd85a; font-size: 8px; }
+.room-shape.needs-confirmation { opacity: 1; border-style: dashed; color: #6d756e; }
+.room-shape.needs-confirmation span { background: #6d756e; }
+.space-confirm .facility-list { margin-bottom: 10px; }
+.room-comments { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(32,37,33,.1); }
+.room-comments__heading { display: flex; align-items: center; gap: 8px; }
+.room-comments__heading > span { display: grid; gap: 2px; }
+.room-comments__heading strong { font-size: 10px; }
+.room-comments__heading small { color: #798079; font-size: 7px; }
+.room-comments article { display: grid; gap: 2px; padding: 8px 9px; border-radius: 9px; background: #eef3ef; }
+.room-comments article b { color: #1d7f69; font-size: 7px; text-transform: uppercase; }
+.room-comments article span { color: #4f5951; font-size: 8px; line-height: 1.35; }
+.room-comments .issue-grid { grid-template-columns: repeat(3,1fr); gap: 5px; }
+.room-comments .issue-grid button { min-height: 30px; padding: 3px; font-size: 7px; }
+.room-comments textarea { width: 100%; resize: vertical; padding: 9px 10px; border: 1px solid rgba(32,37,33,.13); border-radius: 9px; outline: 0; font: 500 8px/1.4 'DM Sans',sans-serif; }
+.room-comments .room-report-action { min-height: 38px; display: flex; justify-content: center; margin: 0; color: #202521; border: 0; background: #ffd85a; font-size: 8px; font-weight: 800; }
+.comment-status { display: flex; align-items: center; gap: 4px; font-size: 7px; }
+.comment-status.is-saved { color: #155d4e; }.comment-status.is-error { color: #9b4934; }
+
+.demo-visual .cremorne-map, .operator-scene .cremorne-map { width: 100%; height: 100%; min-height: 500px; }
+.demo-visual .leaflet-tile-pane, .operator-scene .leaflet-tile-pane { filter: grayscale(.7) saturate(.6) brightness(1.05); }
+.demo-live-source { position: absolute; z-index: 850; left: 16px; bottom: 18px; display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 10px; color: #1d7f69; background: rgba(255,255,255,.94); box-shadow: 0 8px 24px rgba(31,38,32,.12); }
+.demo-live-source > span { display: grid; gap: 2px; }.demo-live-source small { font-size: 6px; letter-spacing: .1em; font-weight: 900; }.demo-live-source strong { color: #202521; font-size: 8px; }
+.operator-scene .scene-top { z-index: 850; background: rgba(255,255,255,.94); }
+.operator-scene .scene-legend { z-index: 850; }
+
+@media (max-width: 760px) {
+  .route-summary-panel { position: static; width: auto; margin: 78px 10px 10px; }
+  .journey-map { display: flex; flex-direction: column; }
+  .journey-map .cremorne-map { min-height: 480px; order: 2; }
+  .journey-map .map-context { order: 1; }
+  .capacity-address { left: 10px; right: 10px; top: 10px; }
+  .space-canvas { min-height: 460px; }
+  .room-comments .issue-grid { grid-template-columns: repeat(2,1fr); }
+  .demo-visual .cremorne-map, .operator-scene .cremorne-map { min-height: 430px; }
 }

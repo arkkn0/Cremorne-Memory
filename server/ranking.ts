@@ -119,7 +119,7 @@ function rankWorkspace(
   if (demand.requirements.accessible && !capacity.stepFree) blockers.push('Accessibility is not verified.')
   if (demand.requirements.hybridEquipment && !hasAny(capacity.facilities, ['Video call', 'Video conference', 'Hybrid presentation', 'AV'])) blockers.push('Hybrid meeting equipment is not listed.')
   demand.requirements.equipment.forEach((equipment) => {
-    if (!facilityMatches(capacity.facilities, equipment)) blockers.push(`${equipment} is not listed.`)
+    if (!facilityMatches(capacity.facilities, equipment)) blockers.push(`${equipment} is not confirmed in venue data.`)
   })
   if (!matchingWindow) blockers.push(`The room is not available from ${requestedStart} to ${requestedEnd}.`)
   if (capacity.accessClass === 'internal' && capacity.ownerOrganisation !== demand.requesterOrganisation) blockers.push('This room is internal to another organisation.')

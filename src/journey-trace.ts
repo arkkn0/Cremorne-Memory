@@ -21,7 +21,24 @@ export function traceLengthMetres(points: JourneyPoint[]) {
 
 export function distanceToPolyline(point: JourneyPoint, line: JourneyPoint[]) {
   if (!line.length) return Number.POSITIVE_INFINITY
-  return Math.min(...line.map((candidate) => distanceMetres(point, candidate)))
+  if (line.length === 1) return distanceMetres(point, line[0])
+  return Math.min(...line.slice(1).map((end, index) => distanceToSegmentMetres(point, line[index], end)))
+}
+
+function distanceToSegmentMetres(point: JourneyPoint, start: JourneyPoint, end: JourneyPoint) {
+  const latitude = radians(point[0])
+  const toLocal = ([lat, lng]: JourneyPoint) => ({
+    x: radians(lng - point[1]) * EARTH_METRES * Math.cos(latitude),
+    y: radians(lat - point[0]) * EARTH_METRES,
+  })
+  const a = toLocal(start)
+  const b = toLocal(end)
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lengthSquared = dx * dx + dy * dy
+  if (!lengthSquared) return Math.hypot(a.x, a.y)
+  const projection = Math.max(0, Math.min(1, -(a.x * dx + a.y * dy) / lengthSquared))
+  return Math.hypot(a.x + projection * dx, a.y + projection * dy)
 }
 
 export function isDistinctJourneyTrace(actual: JourneyPoint[], planned: JourneyPoint[]) {

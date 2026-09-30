@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import type { EvaluatedProductRoute } from './product'
 import { productContext } from './product'
 import type { JourneyPoint } from './journey-trace'
@@ -23,35 +23,22 @@ function FollowJourney({ point }: { point?: JourneyPoint }) {
   return null
 }
 
-function RouteSketcher({ enabled, onPoint }: { enabled: boolean; onPoint?: (point: JourneyPoint) => void }) {
-  useMapEvents({
-    click(event) {
-      if (enabled) onPoint?.([event.latlng.lat, event.latlng.lng])
-    },
-  })
-  return null
-}
-
 export default function CremorneMap({
   routes,
   selectedId,
   onSelect,
   showTrees,
-  journeyProgress,
+  showFlow = false,
   journeyTrace = [],
-  draftTrace = [],
-  draftMode = false,
-  onDraftPoint,
+  candidateTraces = [],
 }: {
   routes: EvaluatedProductRoute[]
   selectedId?: string
   onSelect: (id: string) => void
   showTrees: boolean
-  journeyProgress?: number
+  showFlow?: boolean
   journeyTrace?: JourneyPoint[]
-  draftTrace?: JourneyPoint[]
-  draftMode?: boolean
-  onDraftPoint?: (point: JourneyPoint) => void
+  candidateTraces?: Array<{ id: string; name: string; points: JourneyPoint[]; status: string }>
 }) {
   const [flowTick, setFlowTick] = useState(0)
   useEffect(() => {
@@ -60,11 +47,7 @@ export default function CremorneMap({
   }, [])
 
   const activeRoute = routes.find((route) => route.id === selectedId) ?? routes.find((route) => route.recommended)
-  const guidedPosition = useMemo(() => {
-    if (!activeRoute?.coordinates.length || journeyProgress == null) return undefined
-    const index = Math.min(activeRoute.coordinates.length - 1, Math.floor(journeyProgress * (activeRoute.coordinates.length - 1)))
-    return journeyTrace.at(-1) ?? activeRoute.coordinates[index]
-  }, [activeRoute, journeyProgress, journeyTrace])
+  const guidedPosition = journeyTrace.at(-1)
   const movingWorkers = useMemo(() => {
     if (!activeRoute?.coordinates.length) return []
     return Array.from({ length: 9 }, (_, index) => {
@@ -82,7 +65,6 @@ export default function CremorneMap({
       />
       <FitRoute routes={routes} />
       <FollowJourney point={guidedPosition} />
-      <RouteSketcher enabled={draftMode} onPoint={onDraftPoint} />
 
       {showTrees && productContext.trees.map((tree) => (
         <CircleMarker
@@ -116,18 +98,17 @@ export default function CremorneMap({
         )
       })}
 
-      {journeyProgress != null && movingWorkers.map((position, index) => (
+      {showFlow && movingWorkers.map((position, index) => (
         <CircleMarker
-          key={`${activeRoute?.id}-${index}`}
+          key={`demand-${activeRoute?.id}-${index}`}
           center={position}
           radius={index % 3 === 0 ? 4 : 3}
           pathOptions={{ color: '#202521', fillColor: '#ffd85a', fillOpacity: 1, weight: 1.5 }}
-        />
+        ><Tooltip>Estimated arrival flow in this time band</Tooltip></CircleMarker>
       ))}
 
       {journeyTrace.length > 1 && <Polyline positions={journeyTrace} pathOptions={{ color: '#ffd85a', opacity: 1, weight: 7, className: 'actual-journey-line' }}><Tooltip>Your walked path</Tooltip></Polyline>}
-      {draftTrace.length > 1 && <Polyline positions={draftTrace} pathOptions={{ color: '#ff6542', opacity: 1, weight: 7, dashArray: '14 9', className: 'draft-route-line' }}><Tooltip>Your proposed route</Tooltip></Polyline>}
-      {draftTrace.map((point, index) => <CircleMarker key={`draft-${index}`} center={point} radius={index === 0 || index === draftTrace.length - 1 ? 7 : 4} pathOptions={{ color: '#fff', fillColor: '#ff6542', fillOpacity: 1, weight: 3 }}><Tooltip>{index === 0 ? 'Start' : index === draftTrace.length - 1 ? 'End' : `Point ${index + 1}`}</Tooltip></CircleMarker>)}
+      {candidateTraces.filter((candidate) => candidate.points.length > 1).map((candidate) => <Polyline key={candidate.id} positions={candidate.points} pathOptions={{ color: candidate.status === 'validated' ? '#1d7f69' : '#ff6542', opacity: .92, weight: 6, dashArray: candidate.status === 'validated' ? undefined : '14 9' }}><Tooltip>{candidate.name} · {candidate.status}</Tooltip></Polyline>)}
       {guidedPosition && <CircleMarker center={guidedPosition} radius={9} pathOptions={{ color: '#fff', fillColor: '#202521', fillOpacity: 1, weight: 4 }}><Tooltip permanent direction="top" offset={[0, -10]}>You</Tooltip></CircleMarker>}
 
       <CircleMarker center={productContext.places.cdh.position} radius={8} pathOptions={{ color: '#232824', fillColor: '#ffd85a', fillOpacity: 1, weight: 3 }}>

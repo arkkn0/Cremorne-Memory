@@ -293,7 +293,7 @@ export function findSpaces({
         : equipment === 'Flexible seating'
           ? space.facilities.some((facility) => ['Flexible seating', 'Flexible layout'].includes(facility))
           : space.facilities.includes(equipment)
-      if (!matched) blockers.push(`${equipment} not listed`)
+      if (!matched) blockers.push(`${equipment} not confirmed in venue data`)
     })
     if (space.availability.length === 0) blockers.push('Live owner availability is not connected yet')
     const endTime = addClockMinutes(timeLabel, durationMinutes)
