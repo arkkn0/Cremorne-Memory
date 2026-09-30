@@ -439,7 +439,9 @@ export class Neo4jCapacityGraph implements GraphRepository {
   private readonly driver = getDriver()
 
   async ensureSeeded() {
-    if (process.env.CREMORNE_AUTO_SEED === 'false') return
+    // Production requests must never pay for schema/data migration work. The
+    // deployment seed command owns that lifecycle; local development may opt in.
+    if (process.env.VERCEL || process.env.CREMORNE_AUTO_SEED === 'false') return
     if (!seedPromise) seedPromise = this.seedIfEmpty()
     return seedPromise
   }
@@ -541,12 +543,9 @@ export class Neo4jCapacityGraph implements GraphRepository {
 
   async resolvePlace(raw: string) {
     await this.ensureSeeded()
-    const result = await this.run('MATCH (p:Place) RETURN p')
-    const places = result.records.map((record) => {
-      const data = properties(record.get('p'))
-      return { id: String(data.id), name: String(data.name), aliases: stringArray(data.aliases) }
-    })
-    return resolveAgainstPlaces(raw, places)
+    // Place aliases ship with the same versioned baseline that seeds Neo4j.
+    // Resolving them locally removes one database round-trip from every request.
+    return resolveAgainstPlaces(raw, DEFAULT_PLACES)
   }
 
   async retrieve(demand: StructuredDemand, context: DecisionContext, useMemory: boolean): Promise<GraphNeighbourhood> {
@@ -588,7 +587,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
     if (!useMemory || candidates.length === 0) return { backend: this.backend, candidates, memories: [] }
     const ids = candidates.map((candidate) => candidate.id)
     const requirements = relevantRequirementKeys(demand)
-    const ruleResult = await this.run(`
+    const ruleQuery = this.run(`
       MATCH (rule:OperatingRule)-[:APPLIES_TO]->(capacity:CapacityUnit)
       MATCH (rule)-[:UNDER_CONTEXT]->(context:Context)
       MATCH (rule)-[:HAS_EXCEPTION]->(exception:Exception)-[:AFFECTS]->(requirement:Requirement)
@@ -597,7 +596,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
         AND coalesce(context.crowdingMin, 0.0) <= $crowding
       RETURN rule, capacity.id AS capacityId, requirement.key AS requirementKey, exception.summary AS exceptionSummary
     `, { ids, requirements, uvIndex: context.uvIndex, crowding: context.crowding })
-    const outcomeResult = await this.run(`
+    const outcomeQuery = this.run(`
       MATCH (capacity:CapacityUnit)-[:HAS_OUTCOME]->(outcome:Outcome)-[:FOR_REQUIREMENT]->(requirement:Requirement)
       WHERE capacity.id IN $ids AND requirement.key IN $requirements
         AND (outcome.scope IN ['cohort', 'precinct']
@@ -606,7 +605,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
       ORDER BY outcome.createdAt DESC
       LIMIT 20
     `, { ids, requirements, profileId: context.profileId || '' })
-    const personalIssueResult = context.profileId ? await this.run(`
+    const personalIssueQuery = context.profileId ? this.run(`
       MATCH (capacity:CapacityUnit)-[:HAS_ISSUE_REPORT]->(report:IssueReport)-[:FOR_REQUIREMENT]->(requirement:Requirement)
       WHERE capacity.id IN $ids
         AND requirement.key IN $requirements
@@ -614,7 +613,9 @@ export class Neo4jCapacityGraph implements GraphRepository {
       RETURN capacity.id AS capacityId, report, requirement.key AS requirementKey
       ORDER BY report.createdAt DESC
       LIMIT 20
-    `, { ids, requirements, profileId: context.profileId }) : null
+    `, { ids, requirements, profileId: context.profileId }) : Promise.resolve(null)
+
+    const [ruleResult, outcomeResult, personalIssueResult] = await Promise.all([ruleQuery, outcomeQuery, personalIssueQuery])
 
     const memories: RetrievedMemory[] = [
       ...ruleResult.records.map((record) => {
