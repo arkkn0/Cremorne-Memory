@@ -5,8 +5,8 @@ import {
   MessageSquare, Navigation, PencilLine, Play, RefreshCw, RotateCcw, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
 } from 'lucide-react'
 import CremorneMap from './CremorneMap'
-import { currentDecisionContext, getCandidateRoutes, getWorkspaceIssues, recommendCapacity, recordGraphOutcome, reviewCandidateRoute, reviewWorkspaceIssue } from './api'
-import type { CandidateRouteRecord, RecommendResponse, WorkspaceIssueKey, WorkspaceIssueRecord } from './api-contracts'
+import { currentDecisionContext, getCandidateRoutes, getRouteExceptions, getWorkspaceIssues, recommendCapacity, recordGraphOutcome, reviewCandidateRoute, reviewRouteException, reviewWorkspaceIssue } from './api'
+import type { CandidateRouteRecord, RecommendResponse, RouteExceptionRecord, WorkspaceIssueKey, WorkspaceIssueRecord } from './api-contracts'
 import { loadJourneyOutcomes, loadMemory, loadRoomExperiences, saveJourneyOutcome, saveRoomExperience } from './memory'
 import type { RoomExperience } from './memory'
 import type { MemoryRule } from './domain'
@@ -128,16 +128,11 @@ function useWeather() {
   const [weather, setWeather] = useState<WeatherState>({ temperature: 0, uvIndex: 0, source: 'Live feed unavailable', forecast: [] })
   useEffect(() => {
     const controller = new AbortController()
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=-37.83&longitude=144.995&hourly=temperature_2m,uv_index&forecast_days=2&timezone=Australia%2FSydney', { signal: controller.signal })
+    fetch('/api/context', { signal: controller.signal })
       .then((response) => response.json()).then((data) => {
-        const now = new Date()
-        const localHour = `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:00`
-        const index = data.hourly?.time?.findIndex((value: string) => value === localHour) ?? -1
-        const forecast = (data.hourly?.time ?? []).map((time: string, pointIndex: number) => ({
-          time,
-          temperature: Number(data.hourly.temperature_2m[pointIndex]),
-          uvIndex: Number(data.hourly.uv_index[pointIndex]),
-        }))
+        const localHour = sydneyHourKey(new Date())
+        const forecast = (data.forecast ?? []) as WeatherPoint[]
+        const index = forecast.findIndex((point) => point.time === localHour)
         if (index >= 0) setWeather({ temperature: forecast[index].temperature, uvIndex: forecast[index].uvIndex, source: 'Cremorne hourly forecast · Open-Meteo', forecast })
       }).catch(() => undefined)
     return () => controller.abort()
@@ -145,15 +140,21 @@ function useWeather() {
   return weather
 }
 
+function sydneyHourKey(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date)
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? ''
+  return `${value('year')}-${value('month')}-${value('day')}T${value('hour')}:00`
+}
+
 function weatherAtClock(weather: WeatherState, clock: string) {
-  if (!weather.forecast.length) return { temperature: weather.temperature, uvIndex: weather.uvIndex, time: clock }
+  if (!weather.forecast.length) return { temperature: weather.temperature, uvIndex: weather.uvIndex, time: clock, available: false }
   const [hour] = clock.split(':').map(Number)
-  const now = new Date()
-  const target = new Date(now)
-  target.setHours(hour, 0, 0, 0)
-  if (target.getTime() < now.getTime()) target.setDate(target.getDate() + 1)
-  const key = `${String(target.getFullYear()).padStart(4, '0')}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00`
-  return weather.forecast.find((point) => point.time === key) ?? { temperature: weather.temperature, uvIndex: weather.uvIndex, time: clock }
+  const currentHour = sydneyHourKey(new Date())
+  const targetSuffix = `T${String(hour).padStart(2, '0')}:00`
+  const point = weather.forecast.find((candidate) => candidate.time >= currentHour && candidate.time.endsWith(targetSuffix))
+  return point ? { ...point, available: true } : { temperature: weather.temperature, uvIndex: weather.uvIndex, time: clock, available: false }
 }
 
 function ProductApp() {
@@ -444,7 +445,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
       metrics: {
         elapsedSeconds,
         predictedMinutes: selected.durationMin,
-        exposureIndex: selected.exposureIndex,
+        ...(timeOfUseWeather.available ? { exposureIndex: selected.exposureIndex } : {}),
         ...(Number.isFinite(crossingWait) && crossingWaitMinutes !== '' ? { crossingWaitMinutes: crossingWait } : {}),
         ...(Number.isFinite(directSun) && directSunMinutes !== '' ? { directSunMinutes: directSun } : {}),
       },
@@ -468,7 +469,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
       completedAt: new Date().toISOString(),
       elapsedSeconds,
       predictedMinutes: selected.durationMin,
-      exposureIndex: selected.exposureIndex,
+      ...(timeOfUseWeather.available ? { exposureIndex: selected.exposureIndex } : {}),
       ...(Number.isFinite(crossingWait) && crossingWaitMinutes !== '' ? { crossingWaitMinutes: crossingWait } : {}),
       ...(Number.isFinite(directSun) && directSunMinutes !== '' ? { directSunMinutes: directSun } : {}),
       feedback: value,
@@ -552,7 +553,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
 
       <div className="journey-map">
         <CremorneMap routes={routes} selectedId={selected?.id} onSelect={(id) => { if (!draftMode) { setSelectedId(id); if (stage === 'setup') setStage('results') } }} showTrees journeyProgress={stage === 'active' ? journeyProgress / 100 : undefined} journeyTrace={journeyTrace} draftMode={draftMode} draftTrace={draftTrace} onDraftPoint={(point) => { setDraftTrace((current) => [...current, point]); setDraftStatus('idle') }} />
-        <div className="map-context"><span><Sun size={15}/>UV {timeOfUseWeather.uvIndex.toFixed(1)} at arrival</span><span><Trees size={15} /> Canopy along each route</span><span><Users size={15} /> {workers.toLocaleString()} arrivals in this time band</span>{(memory.length > 0 || personalOutcomes.length > 0) && <span className="memory-on"><BrainCircuit size={15} /> Previous outcome applied</span>}</div>
+        <div className="map-context"><span><Sun size={15}/>{timeOfUseWeather.available ? `UV ${timeOfUseWeather.uvIndex.toFixed(1)} at arrival` : 'UV forecast unavailable'}</span><span><Trees size={15} /> Canopy along each route</span><span><Users size={15} /> {workers.toLocaleString()} arrivals in this time band</span>{(memory.length > 0 || personalOutcomes.length > 0) && <span className="memory-on"><BrainCircuit size={15} /> Previous outcome applied</span>}</div>
         {stage === 'active' && <div className="map-active-banner"><Navigation size={16} /><span>Journey in progress</span></div>}
         {draftMode && <div className="route-sketch-card">
           <button className="route-sketch-close" aria-label="Close route designer" onClick={() => { setDraftMode(false); setDraftTrace([]); setDraftStatus('idle') }}><X size={16}/></button>
@@ -733,6 +734,7 @@ function OperatorExperience({ weather, onSeeWorker }: {
   const journeyOutcomes = useMemo(() => loadJourneyOutcomes(), [])
   const latestJourney = journeyOutcomes[0]
   const [issues, setIssues] = useState<WorkspaceIssueRecord[]>([])
+  const [routeExceptions, setRouteExceptions] = useState<RouteExceptionRecord[]>([])
   const [candidateRoutes, setCandidateRoutes] = useState<CandidateRouteRecord[]>([])
   const [loadingIssues, setLoadingIssues] = useState(true)
   const [candidateUnderReview, setCandidateUnderReview] = useState<CandidateRouteRecord | null>(null)
@@ -740,6 +742,7 @@ function OperatorExperience({ weather, onSeeWorker }: {
   const [candidateReviewStatus, setCandidateReviewStatus] = useState<'idle' | 'saving' | 'error'>('idle')
   const [issuesError, setIssuesError] = useState(false)
   const [reviewingIssueId, setReviewingIssueId] = useState<string | null>(null)
+  const [reviewingRouteExceptionId, setReviewingRouteExceptionId] = useState<string | null>(null)
   const hotspot = productContext.hotspots[0]
   const direct = productContext.routeSets['east-richmond'][0]
   const canopy = productContext.routeSets['east-richmond'][2]
@@ -750,8 +753,12 @@ function OperatorExperience({ weather, onSeeWorker }: {
   }
   useEffect(() => {
     let active = true
-    Promise.all([getWorkspaceIssues(), getCandidateRoutes()]).then(([issueResponse, routeResponse]) => {
-      if (active) { setIssues(issueResponse.issues); setCandidateRoutes(routeResponse.candidates) }
+    Promise.all([getWorkspaceIssues(), getCandidateRoutes(), getRouteExceptions()]).then(([issueResponse, routeResponse, exceptionResponse]) => {
+      if (active) {
+        setIssues(issueResponse.issues)
+        setCandidateRoutes(routeResponse.candidates)
+        setRouteExceptions(exceptionResponse.exceptions)
+      }
     }).catch(() => {
       if (active) setIssuesError(true)
     }).finally(() => {
@@ -766,6 +773,18 @@ function OperatorExperience({ weather, onSeeWorker }: {
       await refreshIssues()
     } catch { setIssuesError(true) }
     finally { setReviewingIssueId(null) }
+  }
+  const rememberRouteException = async (exception: RouteExceptionRecord) => {
+    setReviewingRouteExceptionId(exception.id); setIssuesError(false)
+    try {
+      await reviewRouteException({
+        exceptionId: exception.id,
+        decision: 'validate',
+        reason: `Repeated low-UV journeys found ${exception.capacityName} unsuitable under comparable conditions.`,
+      })
+      setRouteExceptions((await getRouteExceptions()).exceptions)
+    } catch { setIssuesError(true) }
+    finally { setReviewingRouteExceptionId(null) }
   }
   const openCandidateReview = (candidate: CandidateRouteRecord) => {
     setCandidateUnderReview(candidate)
@@ -812,6 +831,8 @@ function OperatorExperience({ weather, onSeeWorker }: {
           <span className="step-kicker">REAL-DATA PILOT</span><h2>Measure what the map cannot see.</h2>
           <div className="result-pair"><div><span>DIRECT B</span><strong>{direct.durationMin} min</strong><small>{direct.canopyAdjacentPct}% canopy-adjacent</small></div><div><span>CANOPY C</span><strong>{canopy.durationMin} min</strong><small>{canopy.canopyAdjacentPct}% canopy-adjacent</small></div></div>
           {latestJourney ? <div className="operator-observed"><span>LATEST WORKER OUTCOME</span><strong>{latestJourney.routeName} · {latestJourney.feedback}</strong><div><b>{Math.max(1, Math.round(latestJourney.elapsedSeconds / 60))} min journey</b>{latestJourney.crossingWaitMinutes != null && <b>{latestJourney.crossingWaitMinutes} min crossing wait</b>}{latestJourney.directSunMinutes != null && <b>{latestJourney.directSunMinutes} min direct sun</b>}</div></div> : <div className="brief-understood"><span>FIELD OUTCOME</span><div><b>journey time</b><b>crossing wait</b><b>direct-sun minutes</b><b>worker experience</b></div></div>}
+          <div className="operator-signal operator-signal--compact"><strong>{routeExceptions.filter((exception) => exception.status === 'candidate').length}</strong><span>route boundaries ready to remember</span></div>
+          <div className="operator-issue-list">{loadingIssues ? <small>Loading route outcomes…</small> : routeExceptions.length === 0 ? <small>Similar route outcomes will appear here.</small> : routeExceptions.slice(0, 2).map((exception) => <div key={exception.id}><span><strong>{exception.capacityName}</strong><small>{exception.independentReporterCount} similar low-UV journeys · {exception.status}</small></span>{exception.status === 'candidate' && <button disabled={reviewingRouteExceptionId === exception.id} onClick={() => void rememberRouteException(exception)}>{reviewingRouteExceptionId === exception.id ? 'Saving…' : 'Remember'}</button>}</div>)}</div>
           <div className="operator-signal operator-signal--compact"><strong>{issues.filter((issue) => issue.status === 'candidate').length}</strong><span>room issues ready for CDH review</span></div>
           <div className="operator-issue-list">{issuesError ? <RetryNotice title="Room evidence unavailable" message="The current review list could not be loaded or updated." onRetry={() => void refreshIssues()} retrying={loadingIssues}/> : loadingIssues ? <small>Loading room evidence…</small> : issues.length === 0 ? <small>No repeated room issue has reached the review threshold.</small> : issues.slice(0, 3).map((issue) => <div key={issue.id}><span><strong>{issue.capacityName}</strong><small>{issue.issue} · {issue.independentReporterCount} independent reports · {issue.status}</small></span>{issue.status === 'candidate' && <button disabled={reviewingIssueId === issue.id} onClick={() => void validateIssue(issue)}>{reviewingIssueId === issue.id ? 'Validating…' : 'Validate'}</button>}</div>)}</div>
           <div className="operator-signal operator-signal--compact"><strong>{candidateRoutes.filter((route) => route.status === 'candidate').length}</strong><span>worker-proposed routes awaiting review</span></div>

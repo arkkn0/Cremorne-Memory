@@ -3,6 +3,7 @@ import type {
   CandidateRouteReviewRequest, CandidateRouteReviewResponse, CandidateRoutesRequest, CandidateRoutesResponse,
   OutcomeRequest, OutcomeResponse,
   RecommendRequest, RecommendResponse, StructuredDemand,
+  RouteExceptionReviewRequest, RouteExceptionReviewResponse, RouteExceptionsRequest, RouteExceptionsResponse,
   WorkspaceIssueReviewRequest, WorkspaceIssueReviewResponse, WorkspaceIssuesRequest, WorkspaceIssuesResponse,
 } from '../src/api-contracts'
 import { explainOptions } from './explanations.js'
@@ -84,6 +85,39 @@ export async function reviewWorkspaceIssue(
     graph: graph.backend,
     issue: await graph.reviewWorkspaceIssue({
       issueId: request.issueId.trim(),
+      decision: request.decision,
+      reason: request.reason.trim(),
+    }),
+  }
+}
+
+export async function listRouteExceptions(
+  request: RouteExceptionsRequest,
+  repository: GraphRepository = getGraphRepository(),
+): Promise<RouteExceptionsResponse> {
+  const graph = await safeGraph(repository)
+  return {
+    action: 'route-exceptions',
+    graph: graph.backend,
+    exceptions: await graph.listRouteExceptions(request.status),
+  }
+}
+
+export async function reviewRouteException(
+  request: RouteExceptionReviewRequest,
+  repository: GraphRepository = getGraphRepository(),
+): Promise<RouteExceptionReviewResponse> {
+  if (!request.exceptionId?.trim()) throw new Error('A route exception id is required.')
+  if (request.decision !== 'validate' && request.decision !== 'reject') {
+    throw new Error('Route exception decision must be validate or reject.')
+  }
+  if (!request.reason?.trim()) throw new Error('A validation or rejection reason is required.')
+  const graph = await safeGraph(repository)
+  return {
+    action: 'route-exception-review',
+    graph: graph.backend,
+    exception: await graph.reviewRouteException({
+      exceptionId: request.exceptionId.trim(),
       decision: request.decision,
       reason: request.reason.trim(),
     }),

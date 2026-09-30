@@ -57,6 +57,23 @@ export interface RetrievedMemory {
 export type CandidateRouteStatus = 'candidate' | 'under-validation' | 'validated' | 'rejected'
 export type WorkspaceIssueKey = 'temperature' | 'equipment' | 'blinds' | 'acoustics' | 'accessibility' | 'other'
 export type WorkspaceIssueStatus = 'collecting' | 'candidate' | 'validated' | 'rejected'
+export type RouteExceptionStatus = 'collecting' | 'candidate' | 'validated' | 'rejected'
+
+export interface RouteExceptionRecord {
+  id: string
+  capacityUnitId: string
+  capacityName: string
+  requirement: string
+  status: RouteExceptionStatus
+  reportCount: number
+  independentReporterCount: number
+  uvMin: number
+  crowdingMin: number
+  firstReportedAt: string
+  lastReportedAt: string
+  reviewedAt?: string
+  reviewReason?: string
+}
 
 export interface WorkspaceIssueInput {
   issue: WorkspaceIssueKey
@@ -233,5 +250,29 @@ export interface WorkspaceIssueReviewResponse {
   issue: WorkspaceIssueRecord
 }
 
-export type DecisionRequest = RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest
-export type DecisionResponse = RecommendResponse | OutcomeResponse | CandidateRoutesResponse | CandidateRouteReviewResponse | WorkspaceIssuesResponse | WorkspaceIssueReviewResponse
+export interface RouteExceptionsRequest {
+  action: 'route-exceptions'
+  status?: RouteExceptionStatus
+}
+
+export interface RouteExceptionsResponse {
+  action: 'route-exceptions'
+  graph: 'neo4j' | 'in-memory'
+  exceptions: RouteExceptionRecord[]
+}
+
+export interface RouteExceptionReviewRequest {
+  action: 'route-exception-review'
+  exceptionId: string
+  decision: 'validate' | 'reject'
+  reason: string
+}
+
+export interface RouteExceptionReviewResponse {
+  action: 'route-exception-review'
+  graph: 'neo4j' | 'in-memory'
+  exception: RouteExceptionRecord
+}
+
+export type DecisionRequest = RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest | RouteExceptionsRequest | RouteExceptionReviewRequest
+export type DecisionResponse = RecommendResponse | OutcomeResponse | CandidateRoutesResponse | CandidateRouteReviewResponse | WorkspaceIssuesResponse | WorkspaceIssueReviewResponse | RouteExceptionsResponse | RouteExceptionReviewResponse

@@ -1,12 +1,17 @@
 import neo4j, { type Driver, type QueryResult, type RecordShape } from 'neo4j-driver'
 import type {
   CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
-  DecisionContext, RetrievedMemory, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
+  DecisionContext, RetrievedMemory, RouteExceptionRecord, RouteExceptionStatus, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
 } from '../src/api-contracts'
 import type { GraphCapacityUnit, GraphNeighbourhood, GraphOutcomeWrite, GraphPlace, GraphRepository, PlaceResolution } from './graph-types'
 import { DEFAULT_CAPACITY_UNITS, DEFAULT_PLACES } from './default-graph.js'
 
 const workspaceIssueThreshold = () => Math.max(2, Number(process.env.CREMORNE_ROOM_ISSUE_THRESHOLD || 3))
+const routeExceptionThreshold = () => Math.max(2, Number(process.env.CREMORNE_ROUTE_EXCEPTION_THRESHOLD || 3))
+
+function routeExceptionId(capacityUnitId: string, requirement: string) {
+  return `route-exception-${normalise(capacityUnitId).replace(/ /g, '-')}-${normalise(requirement).replace(/ /g, '-')}`
+}
 
 function workspaceIssueRequirement(issue: WorkspaceIssueInput) {
   if (issue.issue === 'temperature') return 'thermal-comfort'
@@ -109,10 +114,11 @@ export class InMemoryCapacityGraph implements GraphRepository {
   readonly backend = 'in-memory' as const
   private readonly places = structuredClone(DEFAULT_PLACES)
   private capacities: GraphCapacityUnit[] = structuredClone(DEFAULT_CAPACITY_UNITS)
-  private memories: Array<RetrievedMemory & { profileId?: string }> = []
+  private memories: Array<RetrievedMemory & { profileId?: string; uvMin?: number; crowdingMin?: number }> = []
   private outcomes: GraphOutcomeWrite[] = []
   private candidateRoutes: CandidateRouteRecord[] = []
   private workspaceIssueReviews = new Map<string, { status: 'validated' | 'rejected'; reviewedAt: string; reason: string }>()
+  private routeExceptionReviews = new Map<string, { status: 'validated' | 'rejected'; reviewedAt: string; reason: string }>()
 
   async ensureSeeded() {}
 
@@ -130,7 +136,8 @@ export class InMemoryCapacityGraph implements GraphRepository {
     const memories = useMemory ? this.memories.filter((memory) => {
       if (!candidates.some((candidate) => candidate.id === memory.capacityUnitId)) return false
       if (!requirements.includes(memory.requirement)) return false
-      if (memory.source === 'operating-rule' && context.uvIndex < 7) return false
+      if (memory.source === 'operating-rule' && context.uvIndex < (memory.uvMin ?? 7)) return false
+      if (memory.source === 'operating-rule' && context.crowding < (memory.crowdingMin ?? 0)) return false
       if (memory.scope === 'personal' && (!context.profileId || memory.profileId !== context.profileId)) return false
       return true
     }) : []
@@ -188,6 +195,8 @@ export class InMemoryCapacityGraph implements GraphRepository {
           applies: true,
           source: 'operating-rule',
           scope: 'precinct',
+          uvMin: input.candidateRule!.context.uvMin,
+          crowdingMin: input.candidateRule!.context.crowdingMin,
         }, ...this.memories.filter((memory) => !(memory.id === input.candidateRule!.id && memory.capacityUnitId === capacity.id))]
       })
       memoryIds.push(input.candidateRule.id)
@@ -320,6 +329,69 @@ export class InMemoryCapacityGraph implements GraphRepository {
     }
     return (await this.listWorkspaceIssues(status))[0]
   }
+
+  async listRouteExceptions(status?: RouteExceptionStatus) {
+    const grouped = new Map<string, { capacityUnitId: string; requirement: string; reports: GraphOutcomeWrite[] }>()
+    this.outcomes
+      .filter((outcome) => outcome.demand.intent === 'movement' && outcome.feedback === 'worse' && outcome.context.uvIndex >= 3)
+      .forEach((outcome) => {
+        const requirement = primaryRequirement(outcome.demand)
+        if (requirement !== 'low-uv') return
+        const id = routeExceptionId(outcome.capacityUnitId, requirement)
+        const group = grouped.get(id) ?? { capacityUnitId: outcome.capacityUnitId, requirement, reports: [] }
+        group.reports.push(outcome)
+        grouped.set(id, group)
+      })
+    const records = [...grouped.entries()].map(([id, group]) => {
+      const review = this.routeExceptionReviews.get(id)
+      const reporterIds = new Set(group.reports.map((report) => report.context.profileId || `anonymous-${report.id}`))
+      const timestamps = group.reports.map((report) => report.context.requestedAt).sort()
+      const capacity = this.capacities.find((unit) => unit.id === group.capacityUnitId)
+      return {
+        id,
+        capacityUnitId: group.capacityUnitId,
+        capacityName: capacity?.name || group.capacityUnitId,
+        requirement: group.requirement,
+        status: review?.status ?? (reporterIds.size >= routeExceptionThreshold() ? 'candidate' : 'collecting'),
+        reportCount: group.reports.length,
+        independentReporterCount: reporterIds.size,
+        uvMin: Math.min(...group.reports.map((report) => report.context.uvIndex)),
+        crowdingMin: Math.min(...group.reports.map((report) => report.context.crowding)),
+        firstReportedAt: timestamps[0] || '',
+        lastReportedAt: timestamps.at(-1) || '',
+        reviewedAt: review?.reviewedAt,
+        reviewReason: review?.reason,
+      } satisfies RouteExceptionRecord
+    }).filter((record) => !status || record.status === status)
+    return structuredClone(records.sort((a, b) => b.independentReporterCount - a.independentReporterCount))
+  }
+
+  async reviewRouteException(input: { exceptionId: string; decision: 'validate' | 'reject'; reason: string }) {
+    const exception = (await this.listRouteExceptions()).find((record) => record.id === input.exceptionId)
+    if (!exception) throw new Error(`Route exception ${input.exceptionId} was not found.`)
+    if (exception.status !== 'candidate') throw new Error('A route exception must reach the independent-report threshold before review.')
+    const status = input.decision === 'validate' ? 'validated' : 'rejected'
+    const reviewedAt = new Date().toISOString()
+    this.routeExceptionReviews.set(exception.id, { status, reviewedAt, reason: input.reason })
+    if (status === 'validated') {
+      this.memories = [{
+        id: `validated-${exception.id}`,
+        capacityUnitId: exception.capacityUnitId,
+        requirement: exception.requirement,
+        summary: `${exception.independentReporterCount} similar journeys found this route unsuitable under comparable UV.`,
+        effect: 50,
+        confidence: Math.min(0.9, 0.55 + exception.independentReporterCount * 0.05),
+        applies: true,
+        source: 'operating-rule',
+        scope: 'precinct',
+        uvMin: exception.uvMin,
+        crowdingMin: exception.crowdingMin,
+      }, ...this.memories]
+    }
+    const reviewed = (await this.listRouteExceptions(status)).find((record) => record.id === input.exceptionId)
+    if (!reviewed) throw new Error(`Route exception ${input.exceptionId} could not be reloaded after review.`)
+    return reviewed
+  }
 }
 
 let cachedDriver: Driver | null = null
@@ -395,6 +467,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
       'CREATE CONSTRAINT requirement_key IF NOT EXISTS FOR (n:Requirement) REQUIRE n.key IS UNIQUE',
       'CREATE CONSTRAINT issue_report_id IF NOT EXISTS FOR (n:IssueReport) REQUIRE n.id IS UNIQUE',
       'CREATE CONSTRAINT workspace_issue_id IF NOT EXISTS FOR (n:WorkspaceIssue) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT route_exception_id IF NOT EXISTS FOR (n:RouteException) REQUIRE n.id IS UNIQUE',
     ]
     for (const query of constraints) await this.run(query)
 
@@ -609,6 +682,38 @@ export class Neo4jCapacityGraph implements GraphRepository {
     })
 
     const memoryIds: string[] = input.feedback ? [input.id] : []
+    if (input.demand.intent === 'movement' && input.feedback === 'worse' && requirement === 'low-uv') {
+      await this.run(`
+        MATCH (capacity:CapacityUnit {id: $capacityUnitId})-[:HAS_OUTCOME]->(outcome:Outcome)-[:FOR_REQUIREMENT]->(:Requirement {key: $requirement})
+        MATCH (outcome)-[:UNDER_CONTEXT]->(context:Context)
+      WHERE outcome.feedback = 'worse' AND context.uvIndex >= 3
+        WITH capacity,
+             count(outcome) AS reportCount,
+             count(DISTINCT CASE WHEN coalesce(outcome.profileId, '') = '' THEN outcome.id ELSE outcome.profileId END) AS reporterCount,
+             min(outcome.createdAt) AS firstReportedAt,
+             max(outcome.createdAt) AS lastReportedAt,
+             min(context.uvIndex) AS uvMin,
+             min(context.crowding) AS crowdingMin
+        WHERE reporterCount >= $threshold
+        MERGE (candidate:RouteException {id: $candidateId})
+        ON CREATE SET candidate.status = 'candidate', candidate.createdAt = lastReportedAt
+        SET candidate.capacityUnitId = capacity.id,
+            candidate.capacityName = capacity.name,
+            candidate.requirement = $requirement,
+            candidate.reportCount = reportCount,
+            candidate.independentReporterCount = reporterCount,
+            candidate.uvMin = uvMin,
+            candidate.crowdingMin = crowdingMin,
+            candidate.firstReportedAt = firstReportedAt,
+            candidate.lastReportedAt = lastReportedAt
+        MERGE (candidate)-[:ABOUT]->(capacity)
+      `, {
+        capacityUnitId: input.capacityUnitId,
+        requirement,
+        threshold: routeExceptionThreshold(),
+        candidateId: routeExceptionId(input.capacityUnitId, requirement),
+      })
+    }
     const workspaceIssues = input.demand.intent === 'workspace'
       ? (input.workspaceIssues ?? []).map((issue, index) => ({
           id: `${input.id}-workspace-issue-${index}`,
@@ -905,6 +1010,99 @@ export class Neo4jCapacityGraph implements GraphRepository {
     if (!result.records[0]) throw new Error(`Workspace issue ${input.issueId} was not found or is not ready for review.`)
     const matching = (await this.listWorkspaceIssues(status)).find((issue) => issue.id === input.issueId)
     if (!matching) throw new Error(`Workspace issue ${input.issueId} could not be reloaded after review.`)
+    return matching
+  }
+
+  async listRouteExceptions(status?: RouteExceptionStatus) {
+    await this.ensureSeeded()
+    const result = await this.run(`
+      MATCH (capacity:CapacityUnit)-[:HAS_OUTCOME]->(outcome:Outcome)-[:FOR_REQUIREMENT]->(requirement:Requirement {key: 'low-uv'})
+      MATCH (outcome)-[:UNDER_CONTEXT]->(context:Context)
+      WHERE capacity.kind = 'movement' AND outcome.feedback = 'worse' AND context.uvIndex >= 3
+      WITH capacity, requirement,
+           count(outcome) AS reportCount,
+           count(DISTINCT CASE WHEN coalesce(outcome.profileId, '') = '' THEN outcome.id ELSE outcome.profileId END) AS reporterCount,
+           min(outcome.createdAt) AS firstReportedAt,
+           max(outcome.createdAt) AS lastReportedAt,
+           min(context.uvIndex) AS uvMin,
+           min(context.crowding) AS crowdingMin
+      WITH capacity, requirement, reportCount, reporterCount, firstReportedAt, lastReportedAt, uvMin, crowdingMin,
+           'route-exception-' + replace(toLower(capacity.id), ' ', '-') + '-' + requirement.key AS exceptionId
+      OPTIONAL MATCH (candidate:RouteException {id: exceptionId})
+      WITH capacity, requirement, reportCount, reporterCount, firstReportedAt, lastReportedAt, uvMin, crowdingMin, exceptionId, candidate,
+           CASE
+             WHEN candidate.status IS NOT NULL THEN candidate.status
+             WHEN reporterCount >= $threshold THEN 'candidate'
+             ELSE 'collecting'
+           END AS resolvedStatus
+      WHERE $status = '' OR resolvedStatus = $status
+      RETURN capacity.id AS capacityUnitId, capacity.name AS capacityName, requirement.key AS requirement,
+             reportCount, reporterCount, firstReportedAt, lastReportedAt, uvMin, crowdingMin,
+             exceptionId, resolvedStatus, candidate.reviewedAt AS reviewedAt, candidate.reviewReason AS reviewReason
+      ORDER BY reporterCount DESC, lastReportedAt DESC
+    `, { threshold: routeExceptionThreshold(), status: status || '' })
+    return result.records.map((record) => ({
+      id: String(record.get('exceptionId')),
+      capacityUnitId: String(record.get('capacityUnitId')),
+      capacityName: String(record.get('capacityName')),
+      requirement: String(record.get('requirement')),
+      status: String(record.get('resolvedStatus')) as RouteExceptionStatus,
+      reportCount: toNumber(record.get('reportCount')),
+      independentReporterCount: toNumber(record.get('reporterCount')),
+      uvMin: toNumber(record.get('uvMin')),
+      crowdingMin: toNumber(record.get('crowdingMin')),
+      firstReportedAt: String(record.get('firstReportedAt')),
+      lastReportedAt: String(record.get('lastReportedAt')),
+      reviewedAt: record.get('reviewedAt') ? String(record.get('reviewedAt')) : undefined,
+      reviewReason: record.get('reviewReason') ? String(record.get('reviewReason')) : undefined,
+    } satisfies RouteExceptionRecord))
+  }
+
+  async reviewRouteException(input: { exceptionId: string; decision: 'validate' | 'reject'; reason: string }) {
+    await this.ensureSeeded()
+    const status = input.decision === 'validate' ? 'validated' : 'rejected'
+    const reviewedAt = new Date().toISOString()
+    const result = await this.run(`
+      MATCH (candidate:RouteException {id: $exceptionId})-[:ABOUT]->(capacity:CapacityUnit)
+      WHERE candidate.status = 'candidate'
+      SET candidate.status = $status,
+          candidate.reviewedAt = $reviewedAt,
+          candidate.reviewReason = $reason
+      FOREACH (_ IN CASE WHEN $status = 'validated' THEN [1] ELSE [] END |
+        MERGE (requirement:Requirement {key: candidate.requirement})
+        MERGE (context:Context {id: 'context-validated-' + candidate.id})
+        SET context.name = 'Validated route boundary',
+            context.uvMin = candidate.uvMin,
+            context.crowdingMin = candidate.crowdingMin
+        MERGE (rule:OperatingRule {id: 'validated-' + candidate.id})
+        SET rule.name = capacity.name + ' operating boundary',
+            rule.summary = toString(candidate.independentReporterCount) + ' similar journeys found this route unsuitable under comparable UV.',
+            rule.effect = 50.0,
+            rule.confidence = CASE
+              WHEN candidate.independentReporterCount >= 7 THEN 0.90
+              ELSE 0.55 + candidate.independentReporterCount * 0.05
+            END,
+            rule.createdAt = $reviewedAt
+        MERGE (exception:Exception {id: 'exception-validated-' + candidate.id})
+        SET exception.name = 'Repeated low-UV route mismatch',
+            exception.summary = toString(candidate.independentReporterCount) + ' similar journeys found this route unsuitable under comparable UV.'
+        MERGE (evidence:Evidence {id: 'evidence-validated-' + candidate.id})
+        SET evidence.kind = 'validated-worker-outcomes',
+            evidence.reportCount = candidate.reportCount,
+            evidence.independentReporterCount = candidate.independentReporterCount,
+            evidence.createdAt = $reviewedAt
+        MERGE (rule)-[:APPLIES_TO]->(capacity)
+        MERGE (rule)-[:UNDER_CONTEXT]->(context)
+        MERGE (rule)-[:HAS_EXCEPTION]->(exception)
+        MERGE (exception)-[:AFFECTS]->(requirement)
+        MERGE (rule)-[:SUPPORTED_BY]->(evidence)
+        MERGE (candidate)-[:VALIDATED_AS]->(rule)
+      )
+      RETURN candidate
+    `, { exceptionId: input.exceptionId, status, reviewedAt, reason: input.reason })
+    if (!result.records[0]) throw new Error(`Route exception ${input.exceptionId} was not found or is not ready for review.`)
+    const matching = (await this.listRouteExceptions(status)).find((exception) => exception.id === input.exceptionId)
+    if (!matching) throw new Error(`Route exception ${input.exceptionId} could not be reloaded after review.`)
     return matching
   }
 }

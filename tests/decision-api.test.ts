@@ -56,6 +56,15 @@ describe('decision API contract', () => {
     expect(Array.isArray(body.candidates)).toBe(true)
   })
 
+  it('lists learned route boundaries through the shared Decision API', async () => {
+    const response = await post(JSON.stringify({ action: 'route-exceptions', status: 'candidate' }))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({ action: 'route-exceptions', graph: 'in-memory' })
+    expect(Array.isArray(body.exceptions)).toBe(true)
+  })
+
   it('rejects malformed JSON before invoking a decision service', async () => {
     const response = await post('{"action":"recommend"')
     expect(response.status).toBe(400)

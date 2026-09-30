@@ -155,6 +155,18 @@ const workspaceIssueReviewSchema = z.object({
   reason: boundedText(1_000),
 }).strict()
 
+const routeExceptionsSchema = z.object({
+  action: z.literal('route-exceptions'),
+  status: z.enum(['collecting', 'candidate', 'validated', 'rejected']).optional(),
+}).strict()
+
+const routeExceptionReviewSchema = z.object({
+  action: z.literal('route-exception-review'),
+  exceptionId: id,
+  decision: z.enum(['validate', 'reject']),
+  reason: boundedText(1_000),
+}).strict()
+
 const decisionRequestSchema = z.discriminatedUnion('action', [
   recommendationSchema,
   outcomeSchema,
@@ -162,6 +174,8 @@ const decisionRequestSchema = z.discriminatedUnion('action', [
   candidateRouteReviewSchema,
   workspaceIssuesSchema,
   workspaceIssueReviewSchema,
+  routeExceptionsSchema,
+  routeExceptionReviewSchema,
 ])
 
 export function validateDecisionRequest(value: unknown):

@@ -6,7 +6,7 @@ export const config = { runtime: 'nodejs', maxDuration: 30 }
 export async function handleDecisionRequest(request: Request) {
   try {
     if (!originAllowed(request)) return json(request, { error: 'Origin not allowed.' }, 403)
-    const { listCandidateRoutes, listWorkspaceIssues, recommend, recordOutcome, reviewCandidateRoute, reviewWorkspaceIssue } = await import('../server/decision-service.js')
+    const { listCandidateRoutes, listRouteExceptions, listWorkspaceIssues, recommend, recordOutcome, reviewCandidateRoute, reviewRouteException, reviewWorkspaceIssue } = await import('../server/decision-service.js')
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(request) })
     }
@@ -38,6 +38,10 @@ export async function handleDecisionRequest(request: Request) {
                   ? await listWorkspaceIssues(input)
                   : input.action === 'workspace-issue-review'
                     ? await reviewWorkspaceIssue(input)
+                    : input.action === 'route-exceptions'
+                      ? await listRouteExceptions(input)
+                      : input.action === 'route-exception-review'
+                        ? await reviewRouteException(input)
             : null
       if (!response) return json(request, { error: 'Unsupported action.' }, 400)
       return json(request, response)

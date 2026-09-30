@@ -1,6 +1,6 @@
 import type {
   CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
-  DecisionContext, DemandIntent, RetrievedMemory, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
+  DecisionContext, DemandIntent, RetrievedMemory, RouteExceptionRecord, RouteExceptionStatus, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
 } from '../src/api-contracts'
 import type { MemoryRule } from '../src/domain'
 
@@ -79,5 +79,11 @@ export interface GraphRepository {
     decision: 'validate' | 'reject'
     reason: string
   }): Promise<WorkspaceIssueRecord>
+  listRouteExceptions(status?: RouteExceptionStatus): Promise<RouteExceptionRecord[]>
+  reviewRouteException(input: {
+    exceptionId: string
+    decision: 'validate' | 'reject'
+    reason: string
+  }): Promise<RouteExceptionRecord>
 }
 

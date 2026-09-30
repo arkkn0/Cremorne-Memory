@@ -11,7 +11,7 @@ export interface JourneyOutcome {
   completedAt: string
   elapsedSeconds: number
   predictedMinutes: number
-  exposureIndex: number
+  exposureIndex?: number
   crossingWaitMinutes?: number
   directSunMinutes?: number
   feedback: 'better' | 'same' | 'worse'

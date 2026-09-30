@@ -8,13 +8,17 @@ import type {
   OutcomeResponse,
   RecommendRequest,
   RecommendResponse,
+  RouteExceptionReviewRequest,
+  RouteExceptionReviewResponse,
+  RouteExceptionsRequest,
+  RouteExceptionsResponse,
   WorkspaceIssueReviewRequest,
   WorkspaceIssueReviewResponse,
   WorkspaceIssuesRequest,
   WorkspaceIssuesResponse,
 } from './api-contracts'
 
-async function decisionRequest<T>(request: RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest): Promise<T> {
+async function decisionRequest<T>(request: RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest | RouteExceptionsRequest | RouteExceptionReviewRequest): Promise<T> {
   const response = await fetch('/api/decision', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -49,6 +53,14 @@ export function getWorkspaceIssues(input: Omit<WorkspaceIssuesRequest, 'action'>
 
 export function reviewWorkspaceIssue(input: Omit<WorkspaceIssueReviewRequest, 'action'>) {
   return decisionRequest<WorkspaceIssueReviewResponse>({ action: 'workspace-issue-review', ...input })
+}
+
+export function getRouteExceptions(input: Omit<RouteExceptionsRequest, 'action'> = {}) {
+  return decisionRequest<RouteExceptionsResponse>({ action: 'route-exceptions', ...input })
+}
+
+export function reviewRouteException(input: Omit<RouteExceptionReviewRequest, 'action'>) {
+  return decisionRequest<RouteExceptionReviewResponse>({ action: 'route-exception-review', ...input })
 }
 
 export function currentDecisionContext({

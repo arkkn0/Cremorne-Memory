@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { listCandidateRoutes, listWorkspaceIssues, recommend, recordOutcome, reviewCandidateRoute, reviewWorkspaceIssue } from '../server/decision-service'
+import { listCandidateRoutes, listRouteExceptions, listWorkspaceIssues, recommend, recordOutcome, reviewCandidateRoute, reviewRouteException, reviewWorkspaceIssue } from '../server/decision-service'
 import { InMemoryCapacityGraph } from '../server/graph'
 import type { DecisionContext } from '../src/api-contracts'
 
@@ -253,5 +253,65 @@ describe('graph-grounded decision loop', () => {
     expect(next.retrievedMemory).toEqual(expect.arrayContaining([
       expect.objectContaining({ capacityUnitId: 'workspace-boardroom', scope: 'cohort', requirement: 'hybrid' }),
     ]))
+  })
+
+  it('turns repeated route failures into a reviewed boundary that changes the next eligible set', async () => {
+    const graph = new InMemoryCapacityGraph()
+    for (const profileId of ['route-worker-1', 'route-worker-2', 'route-worker-3']) {
+      const workerContext = { ...context, profileId }
+      const decision = await recommend({
+        action: 'recommend', brief: 'Get me to East Richmond by 4:20pm with minimal direct sun.',
+        context: workerContext, useMemory: true,
+      }, graph)
+      const routeB = decision.options.find((option) => option.name.includes('Route B'))!
+      expect(routeB.eligible).toBe(true)
+      await recordOutcome({
+        action: 'outcome', decisionId: decision.decisionId, capacityUnitId: routeB.id,
+        demand: decision.demand, context: workerContext, feedback: 'worse',
+        metrics: { elapsedSeconds: 590, crossingWaitMinutes: 2.2, directSunMinutes: 5.4 },
+      }, graph)
+    }
+
+    const candidates = await listRouteExceptions({ action: 'route-exceptions', status: 'candidate' }, graph)
+    expect(candidates.exceptions).toHaveLength(1)
+    expect(candidates.exceptions[0]).toMatchObject({
+      capacityUnitId: 'route-east-richmond-b', requirement: 'low-uv', independentReporterCount: 3,
+      uvMin: 8.2, crowdingMin: 82,
+    })
+
+    const reviewed = await reviewRouteException({
+      action: 'route-exception-review', exceptionId: candidates.exceptions[0].id, decision: 'validate',
+      reason: 'Repeated low-UV journeys found the exposed crossing unsuitable under comparable conditions.',
+    }, graph)
+    expect(reviewed.exception.status).toBe('validated')
+
+    const next = await recommend({
+      action: 'recommend', brief: 'Get me to East Richmond by 4:20pm with minimal direct sun.',
+      context: { ...context, profileId: 'route-worker-4' }, useMemory: true,
+    }, graph)
+    expect(next.options.find((option) => option.name.includes('Route B'))).toMatchObject({ eligible: false })
+    expect(next.recommendation?.name).toContain('Shadow Route C')
+    expect(next.retrievedMemory).toEqual(expect.arrayContaining([
+      expect.objectContaining({ capacityUnitId: 'route-east-richmond-b', source: 'operating-rule', scope: 'precinct' }),
+    ]))
+  })
+
+  it('keeps route feedback personal when comparable UV context is unavailable', async () => {
+    const graph = new InMemoryCapacityGraph()
+    for (const profileId of ['unknown-uv-1', 'unknown-uv-2', 'unknown-uv-3']) {
+      const workerContext = { ...context, uvIndex: 0, profileId }
+      const decision = await recommend({
+        action: 'recommend', brief: 'Get me to East Richmond by 4:20pm with minimal direct sun.',
+        context: workerContext, useMemory: true,
+      }, graph)
+      const routeB = decision.options.find((option) => option.name.includes('Route B'))!
+      await recordOutcome({
+        action: 'outcome', decisionId: decision.decisionId, capacityUnitId: routeB.id,
+        demand: decision.demand, context: workerContext, feedback: 'worse', metrics: { directSunMinutes: 4 },
+      }, graph)
+    }
+
+    const candidates = await listRouteExceptions({ action: 'route-exceptions' }, graph)
+    expect(candidates.exceptions).toHaveLength(0)
   })
 })
