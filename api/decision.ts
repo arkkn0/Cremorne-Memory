@@ -4,7 +4,7 @@ export const config = { runtime: 'nodejs', maxDuration: 30 }
 
 export async function handleDecisionRequest(request: Request) {
   try {
-    const { recommend, recordOutcome, runExperiment } = await import('../server/decision-service')
+    const { recommend, recordOutcome, runExperiment } = await import('../server/decision-service.js')
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders() })
     }
@@ -31,8 +31,8 @@ export async function handleDecisionRequest(request: Request) {
 export default { fetch: handleDecisionRequest }
 
 async function handleLegacyGet(request: Request, services: {
-  recommend: typeof import('../server/decision-service')['recommend']
-  runExperiment: typeof import('../server/decision-service')['runExperiment']
+  recommend: typeof import('../server/decision-service.js')['recommend']
+  runExperiment: typeof import('../server/decision-service.js')['runExperiment']
 }) {
   const url = new URL(request.url)
   const need = url.searchParams.get('need') || 'standard'
