@@ -1,4 +1,5 @@
-import type { DecisionRequest, RecommendRequest } from '../src/api-contracts'
+import type { RecommendRequest } from '../src/api-contracts'
+import { validateDecisionRequest } from '../server/validation.js'
 
 export const config = { runtime: 'nodejs', maxDuration: 30 }
 
@@ -9,7 +10,21 @@ export async function handleDecisionRequest(request: Request) {
       return new Response(null, { status: 204, headers: corsHeaders() })
     }
     if (request.method === 'POST') {
-      const input = await request.json() as DecisionRequest
+      const contentLength = Number(request.headers.get('content-length') || 0)
+      if (contentLength > 64 * 1024) return json({ error: 'Request body is too large.' }, 413)
+      const rawBody = await request.text()
+      if (new TextEncoder().encode(rawBody).byteLength > 64 * 1024) {
+        return json({ error: 'Request body is too large.' }, 413)
+      }
+      let raw: unknown
+      try {
+        raw = JSON.parse(rawBody)
+      } catch {
+        return json({ error: 'Request body must be valid JSON.' }, 400)
+      }
+      const parsed = validateDecisionRequest(raw)
+      if (!parsed.success) return json({ error: 'Invalid decision request.', issues: parsed.issues }, 400)
+      const input = parsed.data
       const response = input.action === 'recommend'
         ? await recommend(input)
         : input.action === 'outcome'

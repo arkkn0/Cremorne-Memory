@@ -48,6 +48,66 @@ describe('graph-grounded decision loop', () => {
     expect(second.retrievedMemory.some((memory) => memory.id === outcome.outcomeId)).toBe(true)
   })
 
+  it('stores a retried outcome and its candidate route only once', async () => {
+    const graph = new InMemoryCapacityGraph()
+    const first = await recommend({ action: 'recommend', brief: 'Get me to East Richmond by 4:20pm.', context, useMemory: true }, graph)
+    const request = {
+      action: 'outcome' as const,
+      decisionId: first.decisionId,
+      capacityUnitId: first.recommendation!.id,
+      demand: first.demand,
+      context,
+      feedback: 'better' as const,
+      metrics: { elapsedSeconds: 510 },
+      shareTrace: true,
+      journeyTrace: [[-37.83036, 144.99455], [-37.8298, 144.9954], [-37.8289, 144.9964]] as [number, number][],
+      candidateRouteName: 'Worker-discovered shaded lane',
+    }
+
+    const stored = await recordOutcome(request, graph)
+    const retried = await recordOutcome(request, graph)
+    const candidates = await listCandidateRoutes({ action: 'candidate-routes', status: 'candidate' }, graph)
+    const next = await recommend({ action: 'recommend', brief: 'Get me to East Richmond by 4:20pm.', context, useMemory: true }, graph)
+
+    expect(retried.outcomeId).toBe(stored.outcomeId)
+    expect(retried.candidateCapacityId).toBe(stored.candidateCapacityId)
+    expect(candidates.candidates).toHaveLength(1)
+    expect(next.retrievedMemory.filter((memory) => memory.id === stored.outcomeId)).toHaveLength(1)
+
+    await reviewCandidateRoute({
+      action: 'candidate-route-review', candidateCapacityId: stored.candidateCapacityId!, decision: 'validate',
+      reason: 'The repeated trace was independently verified.', evidence: { confidence: 0.8 },
+    }, graph)
+    await recordOutcome(request, graph)
+    const afterReviewedRetry = await listCandidateRoutes({ action: 'candidate-routes', status: 'validated' }, graph)
+    expect(afterReviewedRetry.candidates).toHaveLength(1)
+  })
+
+  it('does not inflate workspace issue evidence when an outcome is retried', async () => {
+    const graph = new InMemoryCapacityGraph()
+    const decision = await recommend({
+      action: 'recommend', brief: 'I need a room for six people at 2pm for 45 minutes with hybrid equipment.',
+      context, useMemory: true,
+    }, graph)
+    const request = {
+      action: 'outcome' as const,
+      decisionId: decision.decisionId,
+      capacityUnitId: 'workspace-boardroom',
+      demand: decision.demand,
+      context,
+      feedback: 'worse' as const,
+      metrics: {},
+      workspaceIssues: [{ issue: 'acoustics' as const, detail: 'Remote participants could not hear clearly.', severity: 2 as const }],
+    }
+
+    await recordOutcome(request, graph)
+    await recordOutcome(request, graph)
+    const issues = await listWorkspaceIssues({ action: 'workspace-issues', status: 'collecting' }, graph)
+
+    expect(issues.issues).toHaveLength(1)
+    expect(issues.issues[0]).toMatchObject({ reportCount: 1, independentReporterCount: 1 })
+  })
+
   it('uses the same graph for a room × time request', async () => {
     const response = await recommend({ action: 'recommend', brief: 'I need a room for six people at 2pm for 45 minutes with hybrid equipment and a display.', context, useMemory: true }, new InMemoryCapacityGraph())
     expect(response.demand.intent).toBe('workspace')
