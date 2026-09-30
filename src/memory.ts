@@ -1,7 +1,9 @@
 import type { MemoryRule } from './domain'
+import type { WorkspaceIssueKey } from './api-contracts'
 
 const STORAGE_KEY = 'cremorne-memory:v1'
 const OUTCOME_STORAGE_KEY = 'cremorne-outcomes:v1'
+const ROOM_EXPERIENCE_STORAGE_KEY = 'cremorne-room-experiences:v1'
 
 export interface JourneyOutcome {
   routeId: string
@@ -11,6 +13,16 @@ export interface JourneyOutcome {
   predictedMinutes: number
   exposureIndex: number
   feedback: 'better' | 'same' | 'worse'
+}
+
+export interface RoomExperience {
+  id: string
+  roomId: string
+  roomName: string
+  issue: WorkspaceIssueKey
+  detail: string
+  createdAt: string
+  status: 'reported' | 'resolved'
 }
 
 export function loadMemory(): MemoryRule[] {
@@ -46,6 +58,27 @@ export function loadJourneyOutcomes(): JourneyOutcome[] {
   if (typeof window === 'undefined') return []
   try {
     return JSON.parse(window.localStorage.getItem(OUTCOME_STORAGE_KEY) ?? '[]') as JourneyOutcome[]
+  } catch {
+    return []
+  }
+}
+
+export function saveRoomExperience(experience: Omit<RoomExperience, 'id' | 'createdAt'>) {
+  if (typeof window === 'undefined') return []
+  const current = loadRoomExperiences()
+  const next: RoomExperience[] = [{
+    ...experience,
+    id: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `room-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+  }, ...current].slice(0, 30)
+  window.localStorage.setItem(ROOM_EXPERIENCE_STORAGE_KEY, JSON.stringify(next))
+  return next
+}
+
+export function loadRoomExperiences(): RoomExperience[] {
+  if (typeof window === 'undefined') return []
+  try {
+    return JSON.parse(window.localStorage.getItem(ROOM_EXPERIENCE_STORAGE_KEY) ?? '[]') as RoomExperience[]
   } catch {
     return []
   }

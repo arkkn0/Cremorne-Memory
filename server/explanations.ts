@@ -27,7 +27,10 @@ export async function explainOptions(
   options: RankedCapacityOption[],
 ): Promise<{ overall: string; options: RankedCapacityOption[] }> {
   const fallback = fallbackExplanations(demand, options)
-  if (!llmConfigured() || options.length === 0) return fallback
+  // One structured LLM call is enough for an interactive decision. The grounded
+  // product explanation is generated from graph evidence by default so the user
+  // is not blocked by a second network round trip. Teams can opt in when needed.
+  if (!llmConfigured() || process.env.LLM_EXPLANATIONS !== 'true' || options.length === 0) return fallback
 
   try {
     const evidence = options.slice(0, 4).map((option) => ({

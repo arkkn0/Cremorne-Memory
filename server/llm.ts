@@ -24,8 +24,11 @@ export async function requestStructuredOutput<T>({
   if (!apiKey || !model) throw new Error('LLM is not configured')
 
   const baseUrl = (process.env.LLM_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '')
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.LLM_TIMEOUT_MS || 2200))
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
+    signal: controller.signal,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
@@ -42,7 +45,7 @@ export async function requestStructuredOutput<T>({
         json_schema: { name, strict: true, schema },
       },
     }),
-  })
+  }).finally(() => clearTimeout(timeout))
 
   if (!response.ok) {
     const detail = await response.text()

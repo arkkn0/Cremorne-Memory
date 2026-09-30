@@ -193,7 +193,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
       memoryIds.push(input.candidateRule.id)
     }
     let candidateCapacityId: string | undefined
-    if (input.shareTrace && input.feedback === 'better' && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= 3) {
+    if (input.shareTrace && (input.feedback === 'better' || !input.feedback) && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= 3) {
       candidateCapacityId = `candidate-route-${input.id}`
       const source = this.capacities.find((capacity) => capacity.id === input.capacityUnitId)
       if (!source) throw new Error(`Source capacity ${input.capacityUnitId} was not found.`)
@@ -207,7 +207,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
           status: 'candidate',
           geometry: structuredClone(input.journeyTrace!),
           createdAt: new Date().toISOString(),
-          feedback: 'better',
+          feedback: input.feedback === 'better' ? 'better' : 'proposed',
           sampleCount: input.journeyTrace!.length,
           evidenceCount: 1,
           requirement: primaryRequirement(input.demand),
@@ -698,7 +698,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
       memoryIds.push(rule.id)
     }
     let candidateCapacityId: string | undefined
-    if (input.shareTrace && input.feedback === 'better' && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= 3) {
+    if (input.shareTrace && (input.feedback === 'better' || !input.feedback) && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= 3) {
       candidateCapacityId = `candidate-route-${input.id}`
       await this.run(`
         MATCH (source:CapacityUnit {id: $sourceCapacityUnitId})-[:LOCATED_AT]->(place:Place)
@@ -723,7 +723,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
             candidate.evidenceCount = 1,
             candidate.requirement = $requirement,
             candidate.metricsJson = $metricsJson,
-            candidate.feedback = 'better',
+            candidate.feedback = $candidateFeedback,
             candidate.createdAt = $createdAt
         MERGE (candidate)-[:LOCATED_AT]->(place)
         MERGE (candidate)-[:DERIVED_FROM]->(source)
@@ -738,6 +738,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
         sampleCount: input.journeyTrace!.length,
         requirement,
         metricsJson: JSON.stringify(input.metrics),
+        candidateFeedback: input.feedback === 'better' ? 'better' : 'proposed',
         createdAt: new Date().toISOString(),
       })
     }
@@ -908,7 +909,7 @@ function candidateRecord(data: Record<string, unknown>, sourceCapacityUnitId: st
     status: String(data.status) as CandidateRouteStatus, geometry,
     createdAt: String(data.createdAt), reviewedAt: data.reviewedAt ? String(data.reviewedAt) : undefined,
     reviewReason: data.reviewReason ? String(data.reviewReason) : undefined,
-    feedback: 'better', sampleCount: toNumber(data.sampleCount), evidenceCount: toNumber(data.evidenceCount, 1),
+    feedback: data.feedback === 'proposed' ? 'proposed' : 'better', sampleCount: toNumber(data.sampleCount), evidenceCount: toNumber(data.evidenceCount, 1),
     requirement: String(data.requirement || 'standard'), metrics,
     validationConfidence: data.validationConfidence == null ? undefined : toNumber(data.validationConfidence),
   }

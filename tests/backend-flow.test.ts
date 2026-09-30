@@ -160,6 +160,20 @@ describe('graph-grounded decision loop', () => {
     expect(afterValidation.options.some((option) => option.id === stored.candidateCapacityId && option.eligible)).toBe(true)
   })
 
+  it('stores a map-drawn route as a proposal rather than a measured outcome', async () => {
+    const graph = new InMemoryCapacityGraph()
+    const first = await recommend({ action: 'recommend', brief: 'Get me to East Richmond by 4:20pm.', context, useMemory: true }, graph)
+    const stored = await recordOutcome({
+      action: 'outcome', decisionId: first.decisionId, capacityUnitId: first.recommendation!.id,
+      demand: first.demand, context, metrics: { drawnPointCount: 3 }, shareTrace: true,
+      journeyTrace: [[-37.83036, 144.99455], [-37.8297, 144.9958], [-37.8288, 144.9968]],
+      candidateRouteName: 'Worker-proposed passage',
+    }, graph)
+    const pending = await listCandidateRoutes({ action: 'candidate-routes', status: 'candidate' }, graph)
+    expect(stored.memoryIds).toHaveLength(0)
+    expect(pending.candidates[0]).toMatchObject({ name: 'Worker-proposed passage', feedback: 'proposed', status: 'candidate' })
+  })
+
   it('keeps personal feedback isolated from other profiles', async () => {
     const graph = new InMemoryCapacityGraph()
     const first = await recommend({ action: 'recommend', brief: 'Get me to East Richmond by 4:20pm.', context, useMemory: true }, graph)

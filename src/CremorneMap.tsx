@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import type { EvaluatedProductRoute } from './product'
 import { productContext } from './product'
 import type { JourneyPoint } from './journey-trace'
@@ -23,6 +23,15 @@ function FollowJourney({ point }: { point?: JourneyPoint }) {
   return null
 }
 
+function RouteSketcher({ enabled, onPoint }: { enabled: boolean; onPoint?: (point: JourneyPoint) => void }) {
+  useMapEvents({
+    click(event) {
+      if (enabled) onPoint?.([event.latlng.lat, event.latlng.lng])
+    },
+  })
+  return null
+}
+
 export default function CremorneMap({
   routes,
   selectedId,
@@ -30,6 +39,9 @@ export default function CremorneMap({
   showTrees,
   journeyProgress,
   journeyTrace = [],
+  draftTrace = [],
+  draftMode = false,
+  onDraftPoint,
 }: {
   routes: EvaluatedProductRoute[]
   selectedId?: string
@@ -37,6 +49,9 @@ export default function CremorneMap({
   showTrees: boolean
   journeyProgress?: number
   journeyTrace?: JourneyPoint[]
+  draftTrace?: JourneyPoint[]
+  draftMode?: boolean
+  onDraftPoint?: (point: JourneyPoint) => void
 }) {
   const [flowTick, setFlowTick] = useState(0)
   useEffect(() => {
@@ -67,6 +82,7 @@ export default function CremorneMap({
       />
       <FitRoute routes={routes} />
       <FollowJourney point={guidedPosition} />
+      <RouteSketcher enabled={draftMode} onPoint={onDraftPoint} />
 
       {showTrees && productContext.trees.map((tree) => (
         <CircleMarker
@@ -100,7 +116,7 @@ export default function CremorneMap({
         )
       })}
 
-      {movingWorkers.map((position, index) => (
+      {journeyProgress != null && movingWorkers.map((position, index) => (
         <CircleMarker
           key={`${activeRoute?.id}-${index}`}
           center={position}
@@ -110,6 +126,8 @@ export default function CremorneMap({
       ))}
 
       {journeyTrace.length > 1 && <Polyline positions={journeyTrace} pathOptions={{ color: '#ffd85a', opacity: 1, weight: 7, className: 'actual-journey-line' }}><Tooltip>Your walked path</Tooltip></Polyline>}
+      {draftTrace.length > 1 && <Polyline positions={draftTrace} pathOptions={{ color: '#ff6542', opacity: 1, weight: 7, dashArray: '14 9', className: 'draft-route-line' }}><Tooltip>Your proposed route</Tooltip></Polyline>}
+      {draftTrace.map((point, index) => <CircleMarker key={`draft-${index}`} center={point} radius={index === 0 || index === draftTrace.length - 1 ? 7 : 4} pathOptions={{ color: '#fff', fillColor: '#ff6542', fillOpacity: 1, weight: 3 }}><Tooltip>{index === 0 ? 'Start' : index === draftTrace.length - 1 ? 'End' : `Point ${index + 1}`}</Tooltip></CircleMarker>)}
       {guidedPosition && <CircleMarker center={guidedPosition} radius={9} pathOptions={{ color: '#fff', fillColor: '#202521', fillOpacity: 1, weight: 4 }}><Tooltip permanent direction="top" offset={[0, -10]}>You</Tooltip></CircleMarker>}
 
       <CircleMarker center={productContext.places.cdh.position} radius={8} pathOptions={{ color: '#232824', fillColor: '#ffd85a', fillOpacity: 1, weight: 3 }}>
