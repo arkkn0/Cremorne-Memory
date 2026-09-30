@@ -657,6 +657,9 @@ function OperatorExperience({ weather, onSeeWorker }: {
   const [issues, setIssues] = useState<WorkspaceIssueRecord[]>([])
   const [candidateRoutes, setCandidateRoutes] = useState<CandidateRouteRecord[]>([])
   const [loadingIssues, setLoadingIssues] = useState(true)
+  const [candidateUnderReview, setCandidateUnderReview] = useState<CandidateRouteRecord | null>(null)
+  const [candidateReview, setCandidateReview] = useState({ durationMinutes: '', shadePercent: '', safeCapacity: '', confidence: '0.7', reason: '' })
+  const [candidateReviewStatus, setCandidateReviewStatus] = useState<'idle' | 'saving' | 'error'>('idle')
   const hotspot = productContext.hotspots[0]
   const direct = productContext.routeSets['east-richmond'][0]
   const canopy = productContext.routeSets['east-richmond'][2]
@@ -680,9 +683,37 @@ function OperatorExperience({ weather, onSeeWorker }: {
     await reviewWorkspaceIssue({ issueId: issue.id, decision: 'validate', reason: `CDH confirmed the repeated ${issue.issue} reports.` })
     await refreshIssues()
   }
-  const validateCandidate = async (candidate: CandidateRouteRecord) => {
-    await reviewCandidateRoute({ candidateCapacityId: candidate.id, decision: 'validate', reason: 'CDH reviewed the proposed geometry; field evidence is required before public guidance.' })
-    setCandidateRoutes((await getCandidateRoutes()).candidates)
+  const openCandidateReview = (candidate: CandidateRouteRecord) => {
+    setCandidateUnderReview(candidate)
+    setCandidateReview({
+      durationMinutes: candidate.metrics.elapsedSeconds ? String(Number((candidate.metrics.elapsedSeconds / 60).toFixed(1))) : '',
+      shadePercent: candidate.metrics.shadePercent ? String(candidate.metrics.shadePercent) : '',
+      safeCapacity: candidate.metrics.safeCapacity ? String(candidate.metrics.safeCapacity) : '',
+      confidence: candidate.validationConfidence ? String(candidate.validationConfidence) : '0.7',
+      reason: '',
+    })
+    setCandidateReviewStatus('idle')
+  }
+  const submitCandidateReview = async (decision: 'validate' | 'reject') => {
+    if (!candidateUnderReview) return
+    const durationMinutes = Number(candidateReview.durationMinutes)
+    const shadePercent = Number(candidateReview.shadePercent)
+    const safeCapacity = Number(candidateReview.safeCapacity)
+    const confidence = Number(candidateReview.confidence)
+    const hasEvidence = durationMinutes > 0 && shadePercent >= 0 && shadePercent <= 100 && safeCapacity > 0 && confidence > 0 && confidence <= 1
+    if (!candidateReview.reason.trim() || (decision === 'validate' && !hasEvidence)) { setCandidateReviewStatus('error'); return }
+    setCandidateReviewStatus('saving')
+    try {
+      await reviewCandidateRoute({
+        candidateCapacityId: candidateUnderReview.id,
+        decision,
+        reason: candidateReview.reason.trim(),
+        evidence: decision === 'validate' ? { durationMinutes, shadePercent, safeCapacity, confidence } : undefined,
+      })
+      setCandidateRoutes((await getCandidateRoutes()).candidates)
+      setCandidateUnderReview(null)
+      setCandidateReviewStatus('idle')
+    } catch { setCandidateReviewStatus('error') }
   }
   return (
     <main className="operator-clear">
@@ -700,7 +731,7 @@ function OperatorExperience({ weather, onSeeWorker }: {
           <div className="operator-signal operator-signal--compact"><strong>{issues.filter((issue) => issue.status === 'candidate').length}</strong><span>room issues ready for CDH review</span></div>
           <div className="operator-issue-list">{loadingIssues ? <small>Loading room evidence…</small> : issues.length === 0 ? <small>No repeated room issue has reached the review threshold.</small> : issues.slice(0, 3).map((issue) => <div key={issue.id}><span><strong>{issue.capacityName}</strong><small>{issue.issue} · {issue.independentReporterCount} independent reports · {issue.status}</small></span>{issue.status === 'candidate' && <button onClick={() => void validateIssue(issue)}>Validate</button>}</div>)}</div>
           <div className="operator-signal operator-signal--compact"><strong>{candidateRoutes.filter((route) => route.status === 'candidate').length}</strong><span>worker-proposed routes awaiting review</span></div>
-          <div className="operator-issue-list">{loadingIssues ? <small>Loading proposed routes…</small> : candidateRoutes.length === 0 ? <small>No proposed route is waiting for review.</small> : candidateRoutes.slice(0, 2).map((candidate) => <div key={candidate.id}><span><strong>{candidate.name}</strong><small>{candidate.geometry.length} points · {candidate.status}</small></span>{candidate.status === 'candidate' && <button onClick={() => void validateCandidate(candidate)}>Review</button>}</div>)}</div>
+          <div className="operator-issue-list">{loadingIssues ? <small>Loading proposed routes…</small> : candidateRoutes.length === 0 ? <small>No proposed route is waiting for review.</small> : candidateRoutes.slice(0, 2).map((candidate) => <div key={candidate.id}><span><strong>{candidate.name}</strong><small>{candidate.geometry.length} points · {candidate.status}</small></span>{candidate.status === 'candidate' && <button onClick={() => openCandidateReview(candidate)}>Review</button>}</div>)}</div>
           <button className="primary-action" onClick={onSeeWorker}>Open the worker journey <ArrowRight size={18}/></button>
         </aside>
       </section>
@@ -711,6 +742,7 @@ function OperatorExperience({ weather, onSeeWorker }: {
         <div><strong>4 · MEMORY</strong><span>need + context + boundary</span></div><ArrowRight/>
         <div><strong>5 · NEXT MATCH</strong><span>ranking changes</span></div>
       </section>
+      {candidateUnderReview && <div className="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="candidate-review-title"><div className="feedback-modal__card candidate-review-card"><button className="feedback-modal__close" aria-label="Close candidate route review" onClick={() => setCandidateUnderReview(null)}><X size={18}/></button><span className="step-kicker">FIELD REVIEW</span><h2 id="candidate-review-title">Validate {candidateUnderReview.name}</h2><p>A proposed path remains private to the review queue until measured evidence supports wider guidance.</p><div className="candidate-evidence-grid"><label><span>JOURNEY MINUTES</span><input inputMode="decimal" value={candidateReview.durationMinutes} onChange={(event) => setCandidateReview((current) => ({ ...current, durationMinutes: event.target.value }))}/></label><label><span>CANOPY %</span><input inputMode="decimal" value={candidateReview.shadePercent} onChange={(event) => setCandidateReview((current) => ({ ...current, shadePercent: event.target.value }))}/></label><label><span>SAFE CAPACITY</span><input inputMode="numeric" value={candidateReview.safeCapacity} onChange={(event) => setCandidateReview((current) => ({ ...current, safeCapacity: event.target.value }))}/></label><label><span>CONFIDENCE 0–1</span><input inputMode="decimal" value={candidateReview.confidence} onChange={(event) => setCandidateReview((current) => ({ ...current, confidence: event.target.value }))}/></label></div><label className="candidate-review-reason"><span>REVIEW NOTE</span><textarea rows={2} value={candidateReview.reason} onChange={(event) => setCandidateReview((current) => ({ ...current, reason: event.target.value }))} placeholder="What did the field check confirm?"/></label>{candidateReviewStatus === 'error' && <div className="honest-gap"><ShieldAlert/><div><strong>Complete the field evidence</strong><span>Validation needs measured time, canopy, capacity, confidence and a review note.</span></div></div>}<div className="candidate-review-actions"><button disabled={candidateReviewStatus === 'saving'} className="secondary-action" onClick={() => void submitCandidateReview('reject')}>Reject</button><button disabled={candidateReviewStatus === 'saving'} className="primary-action" onClick={() => void submitCandidateReview('validate')}>{candidateReviewStatus === 'saving' ? 'Saving…' : 'Validate route'} <Check size={17}/></button></div></div></div>}
     </main>
   )
 }

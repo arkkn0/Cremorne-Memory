@@ -653,6 +653,13 @@ img, svg { display: block; max-width: 100%; }
 .feedback-modal__card textarea { width: 100%; resize: vertical; padding: 12px; border: 1px solid rgba(32,37,33,.14); border-radius: 11px; outline: 0; font: 500 10px/1.45 'DM Sans',sans-serif; }
 .feedback-success { display: grid; gap: 12px; text-align: center; }
 .feedback-success .arrival-icon { margin-bottom: 0; }
+.candidate-review-card { width: min(650px,100%); max-height: calc(100vh - 36px); overflow-y: auto; }
+.candidate-review-card > p { margin-bottom: 4px; }
+.candidate-evidence-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; }
+.candidate-evidence-grid input { width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid rgba(32,37,33,.14); border-radius: 10px; outline: 0; color: #202521; background: #fff; font: 600 10px 'DM Sans',sans-serif; }
+.candidate-review-reason { margin-top: 2px; }
+.candidate-review-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.candidate-review-actions .primary-action, .candidate-review-actions .secondary-action { min-height: 48px; margin: 0; }
 
 .operator-clear { min-height: calc(100vh - 70px); padding: 20px 24px 14px; }
 .operator-heading { max-width: 1220px; display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; margin: 0 auto 20px; }
@@ -958,6 +965,7 @@ img, svg { display: block; max-width: 100%; }
   .route-sketch-card { position: fixed; right: 10px; bottom: 10px; width: calc(100% - 20px); }
   .issue-grid { grid-template-columns: repeat(2,1fr); }
   .feedback-modal__card { padding: 24px 18px 18px; }
+  .candidate-evidence-grid, .candidate-review-actions { grid-template-columns: 1fr; }
 }
 
 /* Product motion — every movement communicates state, direction or response. */
