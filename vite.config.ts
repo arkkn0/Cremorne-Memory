@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import decisionHandler from './api/decision'
-import healthHandler from './api/health'
+import { handleDecisionRequest } from './api/decision'
+import { handleHealthRequest } from './api/health'
 
 function localApi(): Plugin {
   return {
@@ -29,8 +29,8 @@ function localApi(): Plugin {
           }
         })
       }
-      mount('/api/decision', decisionHandler)
-      mount('/api/health', healthHandler)
+      mount('/api/decision', handleDecisionRequest)
+      mount('/api/health', handleHealthRequest)
     },
   }
 }

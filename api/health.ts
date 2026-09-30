@@ -3,7 +3,7 @@ import { llmConfigured } from '../server/llm'
 
 export const config = { runtime: 'nodejs' }
 
-export default function handler() {
+export function handleHealthRequest() {
   return Response.json({
     product: 'Cremorne Memory',
     status: 'ready',
@@ -13,3 +13,5 @@ export default function handler() {
     evidence: 'public-baseline-plus-synthetic-mvp',
   })
 }
+
+export default { fetch: handleHealthRequest }

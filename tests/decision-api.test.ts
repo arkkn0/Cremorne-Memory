@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import handler from '../api/decision'
+import { handleDecisionRequest as handler } from '../api/decision'
 import { evaluateProductRoutes } from '../src/product'
 
 describe('decision API contract', () => {

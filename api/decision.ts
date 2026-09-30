@@ -3,7 +3,7 @@ import { recommend, recordOutcome, runExperiment } from '../server/decision-serv
 
 export const config = { runtime: 'nodejs', maxDuration: 30 }
 
-export default async function handler(request: Request) {
+export async function handleDecisionRequest(request: Request) {
   try {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders() })
@@ -27,6 +27,8 @@ export default async function handler(request: Request) {
     return json({ error: 'Decision request failed.', detail: message }, 500)
   }
 }
+
+export default { fetch: handleDecisionRequest }
 
 async function handleLegacyGet(request: Request) {
   const url = new URL(request.url)
