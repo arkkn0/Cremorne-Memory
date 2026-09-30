@@ -138,7 +138,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
   }
 
   async recordOutcome(input: GraphOutcomeWrite) {
-    this.outcomes.push(structuredClone(input))
+    this.outcomes = [structuredClone(input), ...this.outcomes.filter((outcome) => outcome.id !== input.id)]
     const memoryIds: string[] = []
     if (input.feedback) {
       const requirement = primaryRequirement(input.demand)
@@ -154,7 +154,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
         source: 'outcome',
         scope: 'personal',
         profileId: input.context.profileId,
-      }, ...this.memories]
+      }, ...this.memories.filter((memory) => memory.id !== id)]
       memoryIds.push(id)
     }
     if (input.demand.intent === 'workspace' && input.workspaceIssues?.length) {
@@ -171,7 +171,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
           source: 'outcome',
           scope: 'personal',
           profileId: input.context.profileId,
-        }, ...this.memories]
+        }, ...this.memories.filter((memory) => memory.id !== id)]
         memoryIds.push(id)
       })
     }
@@ -197,21 +197,23 @@ export class InMemoryCapacityGraph implements GraphRepository {
       candidateCapacityId = `candidate-route-${input.id}`
       const source = this.capacities.find((capacity) => capacity.id === input.capacityUnitId)
       if (!source) throw new Error(`Source capacity ${input.capacityUnitId} was not found.`)
-      this.candidateRoutes.push({
-        id: candidateCapacityId,
-        name: input.candidateRouteName || 'Worker-discovered path',
-        sourceCapacityUnitId: input.capacityUnitId,
-        placeId: source.placeId,
-        destinationId: source.destinationId ?? null,
-        status: 'candidate',
-        geometry: structuredClone(input.journeyTrace!),
-        createdAt: new Date().toISOString(),
-        feedback: input.feedback === 'better' ? 'better' : 'proposed',
-        sampleCount: input.journeyTrace!.length,
-        evidenceCount: 1,
-        requirement: primaryRequirement(input.demand),
-        metrics: structuredClone(input.metrics),
-      })
+      if (!this.candidateRoutes.some((candidate) => candidate.id === candidateCapacityId)) {
+        this.candidateRoutes.unshift({
+          id: candidateCapacityId,
+          name: input.candidateRouteName || 'Worker-discovered path',
+          sourceCapacityUnitId: input.capacityUnitId,
+          placeId: source.placeId,
+          destinationId: source.destinationId ?? null,
+          status: 'candidate',
+          geometry: structuredClone(input.journeyTrace!),
+          createdAt: new Date().toISOString(),
+          feedback: input.feedback === 'better' ? 'better' : 'proposed',
+          sampleCount: input.journeyTrace!.length,
+          evidenceCount: 1,
+          requirement: primaryRequirement(input.demand),
+          metrics: structuredClone(input.metrics),
+        })
+      }
     }
     return { outcomeId: input.id, memoryIds: [...new Set(memoryIds)], candidateCapacityId }
   }
@@ -568,11 +570,13 @@ export class Neo4jCapacityGraph implements GraphRepository {
       MERGE (demand:Demand {id: $decisionId})
       SET demand.intent = $intent, demand.originalText = $originalText
       MERGE (decision:Decision {id: $decisionId})
-      SET decision.name = 'Selected ' + capacity.name, decision.createdAt = $createdAt
+      ON CREATE SET decision.createdAt = $createdAt
+      SET decision.name = 'Selected ' + capacity.name
       MERGE (outcome:Outcome {id: $outcomeId})
+      ON CREATE SET outcome.createdAt = $createdAt
       SET outcome.name = $outcomeName, outcome.feedback = $feedback, outcome.metricsJson = $metricsJson,
           outcome.effect = $feedbackEffect, outcome.confidence = 0.55,
-          outcome.summary = $summary, outcome.createdAt = $createdAt,
+          outcome.summary = $summary,
           outcome.scope = 'personal', outcome.profileId = $profileId
       MERGE (demand)-[:REQUIRES]->(requirement)
       MERGE (decision)-[:RESPONDS_TO]->(demand)
@@ -611,14 +615,14 @@ export class Neo4jCapacityGraph implements GraphRepository {
         UNWIND $issues AS row
         MERGE (requirement:Requirement {key: row.requirement})
         MERGE (report:IssueReport {id: row.id})
+        ON CREATE SET report.createdAt = $createdAt
         SET report.issue = row.issue,
             report.requirement = row.requirement,
             report.detail = row.detail,
             report.facility = row.facility,
             report.severity = row.severity,
             report.summary = row.summary,
-            report.profileId = $profileId,
-            report.createdAt = $createdAt
+            report.profileId = $profileId
         MERGE (capacity)-[:HAS_ISSUE_REPORT]->(report)
         MERGE (outcome)-[:REPORTED]->(report)
         MERGE (report)-[:FOR_REQUIREMENT]->(requirement)
@@ -700,7 +704,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
         MATCH (source:CapacityUnit {id: $sourceCapacityUnitId})-[:LOCATED_AT]->(place:Place)
         MATCH (outcome:Outcome {id: $outcomeId})
         MERGE (candidate:CapacityUnit:CandidateRoute {id: $candidateCapacityId})
-        SET candidate.kind = 'movement', candidate.productId = $candidateCapacityId,
+        ON CREATE SET candidate.kind = 'movement', candidate.productId = $candidateCapacityId,
             candidate.status = 'candidate',
             candidate.name = $name,
             candidate.destinationId = source.destinationId,
@@ -924,4 +928,3 @@ export function getGraphRepository(): GraphRepository {
 export function getFallbackGraph() {
   return fallbackGraph
 }
-

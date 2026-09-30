@@ -41,7 +41,7 @@ export async function recordOutcome(
   repository: GraphRepository = getGraphRepository(),
 ): Promise<OutcomeResponse> {
   const graph = await safeGraph(repository)
-  const id = randomUUID()
+  const id = `outcome-${request.decisionId}`
   const stored = await graph.recordOutcome({
     id, decisionId: request.decisionId, capacityUnitId: request.capacityUnitId,
     demand: request.demand, context: request.context, feedback: request.feedback,
@@ -145,4 +145,3 @@ async function safeGraph(repository: GraphRepository) {
     return fallback
   }
 }
-
