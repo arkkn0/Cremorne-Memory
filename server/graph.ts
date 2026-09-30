@@ -396,6 +396,8 @@ export class InMemoryCapacityGraph implements GraphRepository {
 
 let cachedDriver: Driver | null = null
 let seedPromise: Promise<void> | null = null
+const BASE_DATASET_ID = 'cremorne-public-baseline'
+const BASE_DATASET_VERSION = '2026-10-01-real-capacity-v3'
 
 function neo4jConfigured() {
   return Boolean(process.env.NEO4J_URI && process.env.NEO4J_USERNAME && process.env.NEO4J_PASSWORD)
@@ -448,13 +450,11 @@ export class Neo4jCapacityGraph implements GraphRepository {
 
   private async seedIfEmpty() {
     const result = await this.run(`
-      MATCH (place:Place)
-      WITH count(place) AS places
-      MATCH (capacity:CapacityUnit)
-      RETURN places, count(capacity) AS capacities
-    `)
+      OPTIONAL MATCH (dataset:CremorneDataset {id: $datasetId})
+      RETURN dataset.version AS version
+    `, { datasetId: BASE_DATASET_ID })
     const record = result.records[0]
-    if (record && toNumber(record.get('places')) > 0 && toNumber(record.get('capacities')) > 0) return
+    if (record && String(record.get('version') ?? '') === BASE_DATASET_VERSION) return
     await this.seed()
   }
 
@@ -532,6 +532,11 @@ export class Neo4jCapacityGraph implements GraphRepository {
       OPTIONAL MATCH (outcome:Outcome {id: 'boardroom-low-glare-outcome'})
       DETACH DELETE outcome
     `)
+    await this.run(`
+      MERGE (dataset:CremorneDataset {id: $datasetId})
+      SET dataset.version = $version,
+          dataset.updatedAt = datetime()
+    `, { datasetId: BASE_DATASET_ID, version: BASE_DATASET_VERSION })
   }
 
   async resolvePlace(raw: string) {
