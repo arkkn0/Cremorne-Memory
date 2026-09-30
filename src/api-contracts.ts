@@ -92,7 +92,7 @@ export interface CandidateRouteRecord {
   createdAt: string
   reviewedAt?: string
   reviewReason?: string
-  feedback: 'better'
+  feedback: 'better' | 'proposed'
   sampleCount: number
   evidenceCount: number
   requirement: string
