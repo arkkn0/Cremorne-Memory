@@ -27,6 +27,7 @@ export interface EvaluatedProductRoute extends ProductRoute {
   predictedLoad: number
   remainingCapacity: number
   capacity: number
+  capacityEvidence: 'verified' | 'unknown'
   exposureIndex: number
   score: number
   evidenceStatus: 'public baseline + model' | 'coverage gap'
@@ -36,6 +37,15 @@ export interface EvaluatedProductRoute extends ProductRoute {
 export interface ProductContext {
   generatedAt: string
   evidenceModel: Record<string, string[]>
+  hotspots: Array<{
+    id: string
+    name: string
+    surveyedPedestrianMovements: number
+    surveyWindow: string
+    breakdown: Record<string, number>
+    evidenceSource: string
+  }>
+  smartPoles: string[]
   places: Record<string, {
     id: string
     name: string
@@ -72,7 +82,7 @@ export interface ProductContext {
 
 export const productContext = contextData as unknown as ProductContext
 
-const routeNames = ['Route B · Direct', 'Route A · Quieter', 'Shadow Route C']
+const routeNames = ['Route B · Direct', 'Route A · Alternative', 'Shadow Route C']
 
 export interface ParsedRouteBrief {
   destination: DestinationId
@@ -91,15 +101,6 @@ export interface ParsedSpaceBrief {
   requireAccessible: boolean
   requiredEquipment: string[]
   timeLabel: string
-  chips: string[]
-}
-
-export interface ParsedExperimentBrief {
-  workers: number
-  horizonMin: number
-  place: string
-  protectLowUv: boolean
-  protectMobility: boolean
   chips: string[]
 }
 
@@ -170,27 +171,10 @@ export function parseSpaceBrief(brief: string): ParsedSpaceBrief {
   return { people, durationMinutes, requireHybrid, requireAccessible, requiredEquipment, timeLabel, chips }
 }
 
-export function parseExperimentBrief(brief: string): ParsedExperimentBrief {
-  const text = brief.toLowerCase()
-  const workersMatch = text.match(/(\d{2,4})\s*(?:workers|people|pedestrians)/)
-  const horizonMatch = text.match(/(?:over|within|next)\s*(\d{1,2})\s*(?:min|minute)/)
-  const placeMatch = brief.match(/(?:from|at|around)\s+([A-Z][A-Za-z ]+?)(?:\s+over|\s+within|\.|,|$)/)
-  const workers = Math.min(500, Math.max(100, Number(workersMatch?.[1] ?? 300)))
-  const horizonMin = Math.min(60, Math.max(5, Number(horizonMatch?.[1] ?? 15)))
-  const place = placeMatch?.[1]?.trim() || 'Church Street'
-  const protectLowUv = /low[- ]?uv|photosens|sun exposure/.test(text)
-  const protectMobility = /mobility|step[- ]?free|accessible/.test(text)
-  const chips = [`${workers} workers`, `${horizonMin}-min horizon`, place]
-  if (protectLowUv) chips.push('Low-UV guardrail')
-  if (protectMobility) chips.push('Mobility guardrail')
-  return { workers, horizonMin, place, protectLowUv, protectMobility, chips }
-}
-
 export function evaluateProductRoutes({
   destination,
   need,
   strength = 'required',
-  flexibilityMin = 0,
   uvIndex,
   workers,
   memoryRules = [],
@@ -206,22 +190,17 @@ export function evaluateProductRoutes({
   personalOutcomes?: JourneyOutcome[]
 }): EvaluatedProductRoute[] {
   const routes = productContext.routeSets[destination]
-  const capacities = destination === 'richmond' ? [92, 78, 64] : [72, 62, 58]
   const matchingLowUvRule = memoryRules.find((rule) =>
     rule.routeId === 'B'
     && rule.exception.functionalNeed === 'low-uv'
     && uvIndex >= rule.context.uvMin,
   )
-  const loadShares = [0.52, 0.29, 0.19]
-
   const evaluated = routes.map((route, index) => {
-    const basePredictedLoad = Math.round(workers * loadShares[index])
-    const suggestedDelayMin = flexibilityMin >= 8 && index === 1 ? Math.min(8, flexibilityMin) : 0
-    const timeShiftRelief = suggestedDelayMin ? Math.round(basePredictedLoad * 0.16) : 0
-    const predictedLoad = Math.max(0, basePredictedLoad - timeShiftRelief)
-    const capacity = capacities[index]
-    const remainingCapacity = capacity - predictedLoad
-    const exposureIndex = Math.round(uvIndex * route.durationMin * (1 - route.canopyAdjacentPct / 100 * 0.72))
+    const suggestedDelayMin = 0
+    const predictedLoad = workers
+    const capacity = 0
+    const remainingCapacity = 0
+    const exposureIndex = Math.round(uvIndex * route.durationMin)
     const personalOutcome = personalOutcomes.find((outcome) => outcome.routeId === route.id)
     const reasons: string[] = []
     let eligible = true
@@ -236,30 +215,20 @@ export function evaluateProductRoutes({
       reasons.push(`Memory from ${matchingLowUvRule.context.place}: this direct route increased exposure for low-UV users`)
     }
 
-    if (remainingCapacity < 0) {
-      eligible = false
-      reasons.push(`Predicted arrival load exceeds the modelled safe capacity by ${Math.abs(remainingCapacity)}`)
-    } else {
-      reasons.push(`${remainingCapacity} places remain at predicted arrival`)
-    }
-
-    if (route.canopyAdjacentPct >= 20) reasons.push(`${route.canopyAdjacentPct}% tree-canopy-adjacent geometry`)
-    if (index === 2 && destination === 'east-richmond') reasons.push('Lowest estimated UV exposure of the eligible routes')
-    if (need === 'lower-uv' && index === 2) reasons.push('Covered geometry reduces direct sun and glare')
-    if (suggestedDelayMin) reasons.push(`Predicted load falls after an ${suggestedDelayMin}-minute shift`)
+    reasons.push(`${route.durationMin} minutes from Valhalla / OpenStreetMap routing`)
+    reasons.push(`${route.canopyAdjacentPct}% canopy-adjacent geometry from Vicmap trees`)
+    reasons.push('Live route capacity awaits the Yarra / CDH smart-pole feed')
     if (personalOutcome) reasons.push(`Personal Memory: this route previously felt ${personalOutcome.feedback}`)
     if (personalOutcome && personalOutcome.elapsedSeconds >= 60) reasons.push(`Personal Memory: ${Math.round(personalOutcome.elapsedSeconds / 6) / 10} minutes observed last time`)
 
     const timeWeight = need === 'fastest' ? 12 : 5
-    const exposureWeight = need === 'lower-uv' ? 1.1 : 0.18
-    const crowdingWeight = need === 'lower-crowding' ? 1.4 : 0.15
+    const canopyWeight = need === 'lower-uv' ? 0.9 : 0.08
     const preferenceMultiplier = strength === 'preferred' ? 0.72 : 1
-    const capacityPenalty = remainingCapacity < 12 ? 60 : 0
     const feedbackAdjustment = personalOutcome?.feedback === 'better' ? -12 : personalOutcome?.feedback === 'worse' ? 35 : 0
     const observedTimeAdjustment = personalOutcome && personalOutcome.elapsedSeconds >= 60
       ? Math.max(-20, Math.min(40, (personalOutcome.elapsedSeconds / 60 - personalOutcome.predictedMinutes) * 3))
       : 0
-    const score = route.durationMin * timeWeight + exposureIndex * exposureWeight * preferenceMultiplier + predictedLoad * crowdingWeight * preferenceMultiplier + capacityPenalty + feedbackAdjustment + observedTimeAdjustment
+    const score = route.durationMin * timeWeight - route.canopyAdjacentPct * canopyWeight * preferenceMultiplier + feedbackAdjustment + observedTimeAdjustment
 
     return {
       ...route,
@@ -270,6 +239,7 @@ export function evaluateProductRoutes({
       predictedLoad,
       remainingCapacity,
       capacity,
+      capacityEvidence: 'unknown' as const,
       exposureIndex,
       score,
       evidenceStatus: need === 'step-free' ? 'coverage gap' as const : 'public baseline + model' as const,
@@ -288,11 +258,9 @@ export function demandAtTime(destination: DestinationId, departure: string) {
   const station = productContext.places[destination]
   const [hours, minutes] = departure.split(':').map(Number)
   const minuteOfDay = hours * 60 + minutes
-  const peak = station.pmPeakEntries ?? 0
-  const centre = 17 * 60 + 15
-  const spread = 95
-  const pulse = Math.exp(-((minuteOfDay - centre) ** 2) / (2 * spread ** 2))
-  return Math.max(35, Math.round(65 + peak / 36 * pulse))
+  if (minuteOfDay >= 15 * 60 && minuteOfDay < 19 * 60) return station.pmPeakEntries ?? 0
+  if (minuteOfDay >= 7 * 60 && minuteOfDay < 10 * 60) return station.amPeakEntries ?? 0
+  return station.normalWeekdayEntries ?? station.weekdayEntries ?? 0
 }
 
 export function findSpaces({
@@ -315,7 +283,7 @@ export function findSpaces({
   return productContext.spaces.filter((space) => scope === 'all' || space.accessClass === scope).map((space) => {
     const blockers: string[] = []
     if (space.capacity < people) blockers.push(`Capacity is ${space.capacity}`)
-    if (requireHybrid && !space.facilities.some((facility) => ['Video call', 'AV'].includes(facility))) {
+    if (requireHybrid && !space.facilities.some((facility) => ['Video call', 'Video conference', 'Hybrid presentation', 'AV'].includes(facility))) {
       blockers.push('Hybrid meeting equipment not listed')
     }
     if (requireAccessible && !space.accessible) blockers.push('Accessibility not verified')
@@ -327,7 +295,7 @@ export function findSpaces({
           : space.facilities.includes(equipment)
       if (!matched) blockers.push(`${equipment} not listed`)
     })
-    if (space.availability.length === 0) blockers.push('No owner-provided demo window')
+    if (space.availability.length === 0) blockers.push('Live owner availability is not connected yet')
     const endTime = addClockMinutes(timeLabel, durationMinutes)
     if (space.availability.length > 0 && !space.availability.some((window) => isIntervalWithinWindow(timeLabel, endTime, window))) {
       blockers.push(`Not available from ${timeLabel} to ${endTime}`)

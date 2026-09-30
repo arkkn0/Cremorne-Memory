@@ -717,6 +717,19 @@ img, svg { display: block; max-width: 100%; }
   .technical-drawer a { justify-self: start; }
 }
 
+.room-feedback { display: grid; gap: 9px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.room-feedback > strong { font-size: 11px; }
+.room-feedback .facility-list button { padding: 6px 9px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); background: #fff; font-size: 9px; text-transform: capitalize; }
+.room-feedback .facility-list button.is-active { color: var(--ink); border-color: var(--ink); background: var(--yellow); }
+.room-feedback input { width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 10px; }
+.room-feedback small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.operator-issue-list { display: grid; gap: 7px; margin: 14px 0; }
+.operator-issue-list > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.operator-issue-list span { display: grid; gap: 2px; }
+.operator-issue-list strong { font-size: 10px; }
+.operator-issue-list small { color: var(--muted); font-size: 8px; }
+.operator-issue-list button { padding: 7px 9px; border: 0; border-radius: 8px; color: #fff; background: var(--ink); font-size: 8px; font-weight: 800; text-transform: uppercase; }
+
 /* V4 — judge-first story: a distinct landing page and one 30-second product proof */
 .landing-home { min-height: 100vh; background: #f6f2e9; }
 .hero--product { min-height: 620px; padding: 38px 0 62px; grid-template-columns: .9fr 1.1fr; }

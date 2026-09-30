@@ -1,4 +1,7 @@
-import type { DecisionContext, DemandIntent, RetrievedMemory, StructuredDemand } from '../src/api-contracts'
+import type {
+  CandidateRouteEvidence, CandidateRouteRecord, CandidateRouteStatus,
+  DecisionContext, DemandIntent, RetrievedMemory, StructuredDemand, WorkspaceIssueInput, WorkspaceIssueRecord, WorkspaceIssueStatus,
+} from '../src/api-contracts'
 import type { MemoryRule } from '../src/domain'
 
 export interface GraphPlace {
@@ -21,6 +24,7 @@ export interface GraphCapacityUnit {
   directUvFactor?: number
   stepFree?: boolean
   safeCapacity: number
+  capacityEvidence?: 'verified' | 'unknown'
   baselineDemandShare?: number
   acceptedRecommendations: number
   facilities: string[]
@@ -53,6 +57,7 @@ export interface GraphOutcomeWrite {
   journeyTrace?: [number, number][]
   shareTrace?: boolean
   candidateRouteName?: string
+  workspaceIssues?: WorkspaceIssueInput[]
 }
 
 export interface GraphRepository {
@@ -61,5 +66,18 @@ export interface GraphRepository {
   resolvePlace(raw: string): Promise<PlaceResolution>
   retrieve(demand: StructuredDemand, context: DecisionContext, useMemory: boolean): Promise<GraphNeighbourhood>
   recordOutcome(input: GraphOutcomeWrite): Promise<{ outcomeId: string; memoryIds: string[]; candidateCapacityId?: string }>
+  listCandidateRoutes(status?: CandidateRouteStatus): Promise<CandidateRouteRecord[]>
+  reviewCandidateRoute(input: {
+    candidateCapacityId: string
+    decision: 'validate' | 'reject'
+    reason: string
+    evidence?: CandidateRouteEvidence
+  }): Promise<CandidateRouteRecord>
+  listWorkspaceIssues(status?: WorkspaceIssueStatus): Promise<WorkspaceIssueRecord[]>
+  reviewWorkspaceIssue(input: {
+    issueId: string
+    decision: 'validate' | 'reject'
+    reason: string
+  }): Promise<WorkspaceIssueRecord>
 }
 

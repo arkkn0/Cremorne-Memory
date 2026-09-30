@@ -178,20 +178,6 @@ function fallbackParse(text: string): StructuredDemand {
   }
 }
 
-export function parseExperimentDemand(text: string) {
-  const lower = text.toLowerCase()
-  const workersMatch = lower.match(/(\d{2,4})\s*(?:workers|people|pedestrians)/)
-  const horizonMatch = lower.match(/(?:over|within|next)\s*(\d{1,2})\s*(?:min|minute)/)
-  const placeMatch = text.match(/(?:from|at|around)\s+([A-Z][A-Za-z ]+?)(?:\s+over|\s+within|\.|,|$)/)
-  return {
-    workers: clamp(Number(workersMatch?.[1] ?? 300), 100, 500),
-    horizonMin: clamp(Number(horizonMatch?.[1] ?? 15), 5, 60),
-    place: placeMatch?.[1]?.trim() || 'Church Street',
-    protectLowUv: /low[- ]?uv|photosens|sun exposure/.test(lower),
-    protectMobility: /mobility|step[- ]?free|accessible/.test(lower),
-  }
-}
-
 function mergeDemand(base: StructuredDemand, partial: Partial<StructuredDemand>): StructuredDemand {
   return {
     ...base,

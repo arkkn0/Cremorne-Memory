@@ -9,7 +9,7 @@ export function handleHealthRequest() {
     decisionFlow: 'nlu-graph-memory-ranking-explanation-outcome',
     graph: graphConfigured ? 'neo4j' : 'in-memory-fallback',
     nlu: llmConfigured ? 'llm' : 'fallback-parser',
-    evidence: 'public-baseline-plus-synthetic-mvp',
+    evidence: 'public-baseline-plus-observed-pilot-outcomes',
   })
 }
 

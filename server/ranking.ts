@@ -28,14 +28,15 @@ function rankMovement(
   const delayMinutes = demand.departureFlexibilityMinutes >= 8 && capacity.routeCode === 'A'
     ? Math.min(8, demand.departureFlexibilityMinutes)
     : 0
-  const baseDemand = Math.round(context.workers * (capacity.baselineDemandShare ?? 0.33))
+  const capacityKnown = capacity.capacityEvidence === 'verified'
+  const baseDemand = capacityKnown ? Math.round(context.workers * (capacity.baselineDemandShare ?? 0)) : 0
   const timeShiftRelief = delayMinutes ? Math.round(baseDemand * 0.16) : 0
   const predictedDemand = Math.max(0, baseDemand - timeShiftRelief)
   const accepted = capacity.acceptedRecommendations + (context.acceptedRecommendations?.[capacity.id] ?? 0)
-  const remainingCapacity = capacity.safeCapacity - predictedDemand - accepted
+  const remainingCapacity = capacityKnown ? capacity.safeCapacity - predictedDemand - accepted : 0
   const durationMinutes = capacity.durationMinutes ?? 10
   const shadePercent = capacity.shadePercent ?? 0
-  const exposureIndex = Math.round(context.uvIndex * durationMinutes * (capacity.directUvFactor ?? 1))
+  const exposureIndex = Math.round(context.uvIndex * durationMinutes)
   const reasons: string[] = []
   let eligible = true
 
@@ -54,22 +55,23 @@ function rankMovement(
     reasons.push('A comparable high-UV journey produced higher exposure on this route.')
   }
 
-  if (remainingCapacity < 0) {
+  if (capacityKnown && remainingCapacity < 0) {
     eligible = false
     reasons.push(`Predicted demand exceeds the route’s modelled capacity by ${Math.abs(remainingCapacity)}.`)
   }
 
-  if (eligible) reasons.push(`${remainingCapacity} estimated capacity remains at arrival.`)
-  if (shadePercent >= 20) reasons.push(`${shadePercent}% of the route is beside canopy or covered space.`)
-  if (delayMinutes) reasons.push(`Leaving in ${delayMinutes} minutes reduces the predicted route load.`)
+  if (capacityKnown && eligible) reasons.push(`${remainingCapacity} measured capacity remains at arrival.`)
+  if (!capacityKnown) reasons.push('Live route capacity requires the Cremorne smart-pole feed.')
+  reasons.push(`${durationMinutes} minutes from Valhalla / OpenStreetMap routing.`)
+  if (shadePercent > 0) reasons.push(`${shadePercent}% canopy-adjacent geometry from Vicmap trees.`)
   memories.slice(0, 1).forEach((memory) => reasons.push(memory.summary))
 
   const timeWeight = demand.preferences.crowding === 'lower' ? 5 : 10
-  const crowdingWeight = demand.preferences.crowding === 'lower' ? 1.45 : 0.18
-  const exposureWeight = demand.requirements.lowUv || demand.preferences.uv === 'lower' ? 1.2 : 0.16
-  const remainingPenalty = remainingCapacity < 12 ? 70 : remainingCapacity < 24 ? 18 : 0
+  const crowdingWeight = capacityKnown && demand.preferences.crowding === 'lower' ? 1.45 : 0
+  const exposureWeight = 0
+  const remainingPenalty = capacityKnown ? (remainingCapacity < 12 ? 70 : remainingCapacity < 24 ? 18 : 0) : 0
   const memoryScore = memories.reduce((total, memory) => total + memory.effect * memory.confidence, 0)
-  const shadeCredit = (demand.requirements.lowUv || demand.preferences.uv === 'lower') ? shadePercent * 0.18 : 0
+  const shadeCredit = (demand.requirements.lowUv || demand.preferences.uv === 'lower') ? shadePercent * 0.4 : 0
   const score = durationMinutes * timeWeight
     + predictedDemand * crowdingWeight
     + exposureIndex * exposureWeight
@@ -92,6 +94,7 @@ function rankMovement(
     predictedDemand,
     safeCapacity: capacity.safeCapacity,
     remainingCapacity,
+    capacityEvidence: capacity.capacityEvidence,
     shadePercent,
     exposureIndex,
     stepFree: capacity.stepFree,
@@ -114,7 +117,7 @@ function rankWorkspace(
 
   if (capacity.safeCapacity < demand.capacityRequired) blockers.push(`Capacity is ${capacity.safeCapacity}.`)
   if (demand.requirements.accessible && !capacity.stepFree) blockers.push('Accessibility is not verified.')
-  if (demand.requirements.hybridEquipment && !hasAny(capacity.facilities, ['Video call', 'AV'])) blockers.push('Hybrid meeting equipment is not listed.')
+  if (demand.requirements.hybridEquipment && !hasAny(capacity.facilities, ['Video call', 'Video conference', 'Hybrid presentation', 'AV'])) blockers.push('Hybrid meeting equipment is not listed.')
   demand.requirements.equipment.forEach((equipment) => {
     if (!facilityMatches(capacity.facilities, equipment)) blockers.push(`${equipment} is not listed.`)
   })
@@ -126,7 +129,7 @@ function rankWorkspace(
     reasons.push(`Fits ${demand.capacityRequired} people from ${requestedStart} to ${requestedEnd}.`)
     const matchedFacilities = capacity.facilities.filter((facility) =>
       demand.requirements.equipment.some((required) => facilityMatches([facility], required))
-      || (demand.requirements.hybridEquipment && ['Video call', 'AV'].includes(facility)))
+      || (demand.requirements.hybridEquipment && ['Video call', 'Video conference', 'Hybrid presentation', 'AV'].includes(facility)))
     if (matchedFacilities.length) reasons.push(`Includes ${matchedFacilities.join(', ')}.`)
     memories.slice(0, 1).forEach((memory) => reasons.push(memory.summary))
   }

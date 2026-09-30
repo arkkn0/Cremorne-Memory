@@ -4,43 +4,26 @@ Open `https://team-bubble.vercel.app/app`.
 
 ## 0:00 — Live Proof
 
-The opening state fixes one comparable scenario: 300 workers, high UV, rising Church Street crowding and Mia’s low-UV need.
+1. Show the documented Cremorne Street × Swan Street hotspot: **5,149 surveyed pedestrian movements across the AM and PM peak periods**.
+2. Compare the real route baseline: Direct Route B is **8.4 minutes with 12% canopy-adjacent geometry**; Shadow Route C is **9.0 minutes with 28% canopy-adjacent geometry**.
+3. Add Mia's functional need: low UV required.
+4. Reveal the actionable trade-off: **36 seconds for 16 percentage points more canopy adjacency**.
+5. Show the learning loop: field outcome → reviewed Memory → next match.
 
-1. Select **Run the test**.
-2. Point to the apparent result: crowding −20%, average walking time −7%.
-3. Select **Who did we miss?**
-4. Reveal low-UV exposure +40% and mobility friction +15%.
-5. Select **Remember the exception**.
+Key line: “Cremorne Memory remembers the boundary of success.”
 
-“The outcome does not become a success badge. It becomes a reusable boundary.”
+## 0:35 — Worker App
 
-## 0:35 — Next decision
+Select **Continue as Mia**, then **Find guided actions**. Show the structured need, real route geometry, travel time, canopy evidence and the reason for Shadow Route C.
 
-Route B leaves Mia’s eligible set and Shadow Route C becomes eligible. Select **Continue as Mia**.
+After arrival, the worker records Better / Same / Worse. A materially different Better path can be shared as a candidate route; it enters wider guidance only after CDH validates it.
 
-The Worker App uses normal language, current context, the Capacity Graph and retrieved Memory in one decision. Select **Find guided actions** and show:
+## 1:00 — Workspace Capacity
 
-- destination and deadline resolved from the brief;
-- only eligible route × departure-time actions ranked;
-- predicted demand and remaining capacity;
-- the local high-UV exception changing Mia’s result.
+Search: “Find a 4-person hybrid room at 2pm for 45 minutes with a display and adjustable blinds.” Public CDH metadata verifies capabilities; booking remains unavailable until an owner feed confirms the window. Repeated independent room issues become a CDH review candidate before affecting wider ranking.
 
-## 0:55 — Outcome and path discovery
+## 1:20 — CDH Evidence Lab
 
-Start live guidance. The map follows journey progress and records GPS only after browser permission. At arrival the app draws the walked path and asks for Better / Same / Worse feedback.
-
-If a Better path materially differs from known routes, the worker may select **Share path**. Neo4j stores it as a `CandidateRoute` for CDH validation; it does not immediately enter everyone’s eligible set.
-
-## 1:10 — Same graph, different capacity
-
-Select **Find a room** and search:
-
-> Find a 4-person hybrid room at 2pm for 45 minutes with a display, adjustable blinds and low-glare lighting.
-
-Show the full availability interval, capacity, equipment and “Why this room” explanation. Shared rooms appear only in owner-opened windows; private rooms remain internal.
-
-## 1:25 — Engineering proof
-
-Open **CDH Lab**. Run the controlled comparison and publish the discovered boundary. The result is written to graph Memory and is retrieved by the Worker App’s next comparable request.
+Show the real public baseline and the pilot fields: actual journey time, crossing wait, direct-sun minutes and worker feedback. CDH reviews repeated evidence before publishing a precinct Memory.
 
 Final line: “Prediction sees the next mismatch. Memory makes the next decision better.”

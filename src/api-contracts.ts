@@ -39,6 +39,7 @@ export interface DecisionContext {
   workers: number
   requestedAt: string
   acceptedRecommendations?: Record<string, number>
+  profileId?: string
 }
 
 export interface RetrievedMemory {
@@ -50,6 +51,64 @@ export interface RetrievedMemory {
   confidence: number
   applies: boolean
   source: 'operating-rule' | 'outcome'
+  scope?: 'personal' | 'cohort' | 'precinct'
+}
+
+export type CandidateRouteStatus = 'candidate' | 'under-validation' | 'validated' | 'rejected'
+export type WorkspaceIssueKey = 'temperature' | 'equipment' | 'blinds' | 'acoustics' | 'accessibility' | 'other'
+export type WorkspaceIssueStatus = 'collecting' | 'candidate' | 'validated' | 'rejected'
+
+export interface WorkspaceIssueInput {
+  issue: WorkspaceIssueKey
+  detail?: string
+  facility?: string
+  severity?: 1 | 2 | 3
+}
+
+export interface WorkspaceIssueRecord {
+  id: string
+  capacityUnitId: string
+  capacityName: string
+  issue: WorkspaceIssueKey
+  requirement: string
+  status: WorkspaceIssueStatus
+  reportCount: number
+  independentReporterCount: number
+  firstReportedAt: string
+  lastReportedAt: string
+  reviewedAt?: string
+  reviewReason?: string
+  sampleDetails: string[]
+}
+
+export interface CandidateRouteRecord {
+  id: string
+  name: string
+  sourceCapacityUnitId: string
+  placeId: string
+  destinationId: string | null
+  status: CandidateRouteStatus
+  geometry: [number, number][]
+  createdAt: string
+  reviewedAt?: string
+  reviewReason?: string
+  feedback: 'better'
+  sampleCount: number
+  evidenceCount: number
+  requirement: string
+  metrics: Record<string, number>
+  validationConfidence?: number
+}
+
+export interface CandidateRouteEvidence {
+  durationMinutes?: number
+  distanceMetres?: number
+  shadePercent?: number
+  directUvFactor?: number
+  safeCapacity?: number
+  stepFree?: boolean
+  baselineDemandShare?: number
+  confidence?: number
 }
 
 export interface RankedCapacityOption {
@@ -67,6 +126,7 @@ export interface RankedCapacityOption {
   predictedDemand?: number
   safeCapacity: number
   remainingCapacity: number
+  capacityEvidence?: 'verified' | 'unknown'
   shadePercent?: number
   exposureIndex?: number
   stepFree?: boolean
@@ -100,35 +160,6 @@ export interface RecommendResponse {
   decisionId: string
 }
 
-export interface ExperimentRequest {
-  action: 'experiment'
-  brief: string
-  context: DecisionContext
-  seed?: number
-}
-
-export interface ExperimentResult {
-  crowdingDelta: number
-  walkingDelta: number
-  uvDeltaLowUv: number
-  mobilityFrictionDelta: number
-  baselineLoads: Record<'A' | 'B' | 'C', number>
-  interventionLoads: Record<'A' | 'B' | 'C', number>
-}
-
-export interface ExperimentResponse {
-  action: 'experiment'
-  decisionId: string
-  demand: StructuredDemand
-  graph: 'neo4j' | 'in-memory'
-  parsed: { workers: number; horizonMinutes: number; place: string }
-  experiment: ExperimentResult
-  baseline: { memoryEnabled: false; routeUtilisation: Record<'A' | 'B' | 'C', number> }
-  memoryAware: { memoryEnabled: true; routeUtilisation: Record<'A' | 'B' | 'C', number>; requirementPassRate: number }
-  candidateRule: import('./domain').MemoryRule
-  retrievedMemory: RetrievedMemory[]
-}
-
 export interface OutcomeRequest {
   action: 'outcome'
   decisionId: string
@@ -141,6 +172,7 @@ export interface OutcomeRequest {
   journeyTrace?: [number, number][]
   shareTrace?: boolean
   candidateRouteName?: string
+  workspaceIssues?: WorkspaceIssueInput[]
 }
 
 export interface OutcomeResponse {
@@ -152,5 +184,54 @@ export interface OutcomeResponse {
   candidateCapacityId?: string
 }
 
-export type DecisionRequest = RecommendRequest | ExperimentRequest | OutcomeRequest
-export type DecisionResponse = RecommendResponse | ExperimentResponse | OutcomeResponse
+export interface CandidateRoutesRequest {
+  action: 'candidate-routes'
+  status?: CandidateRouteStatus
+}
+
+export interface CandidateRoutesResponse {
+  action: 'candidate-routes'
+  graph: 'neo4j' | 'in-memory'
+  candidates: CandidateRouteRecord[]
+}
+
+export interface CandidateRouteReviewRequest {
+  action: 'candidate-route-review'
+  candidateCapacityId: string
+  decision: 'validate' | 'reject'
+  reason: string
+  evidence?: CandidateRouteEvidence
+}
+
+export interface CandidateRouteReviewResponse {
+  action: 'candidate-route-review'
+  graph: 'neo4j' | 'in-memory'
+  candidate: CandidateRouteRecord
+}
+
+export interface WorkspaceIssuesRequest {
+  action: 'workspace-issues'
+  status?: WorkspaceIssueStatus
+}
+
+export interface WorkspaceIssuesResponse {
+  action: 'workspace-issues'
+  graph: 'neo4j' | 'in-memory'
+  issues: WorkspaceIssueRecord[]
+}
+
+export interface WorkspaceIssueReviewRequest {
+  action: 'workspace-issue-review'
+  issueId: string
+  decision: 'validate' | 'reject'
+  reason: string
+}
+
+export interface WorkspaceIssueReviewResponse {
+  action: 'workspace-issue-review'
+  graph: 'neo4j' | 'in-memory'
+  issue: WorkspaceIssueRecord
+}
+
+export type DecisionRequest = RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest
+export type DecisionResponse = RecommendResponse | OutcomeResponse | CandidateRoutesResponse | CandidateRouteReviewResponse | WorkspaceIssuesResponse | WorkspaceIssueReviewResponse

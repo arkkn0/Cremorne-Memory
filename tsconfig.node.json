@@ -18,7 +18,6 @@
     "server/**/*.ts",
     "src/api-contracts.ts",
     "src/domain.ts",
-    "src/engine.ts",
     "src/cremorne-context.json"
   ]
 }
