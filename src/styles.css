@@ -471,6 +471,7 @@ img, svg { display: block; max-width: 100%; }
 .honest-gap span { font-size: 8px; line-height: 1.4; }
 .journey-map { position: relative; min-width: 0; background: #e2e7e1; }
 .journey-map .cremorne-map { width: 100%; height: 100%; min-height: 0; }
+.journey-map .leaflet-tile-pane { filter: grayscale(.72) saturate(.52) brightness(1.06) contrast(.94); }
 .map-context { position: absolute; z-index: 850; top: 14px; left: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
 .map-context span, .map-active-banner { min-height: 32px; display: flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid rgba(32,37,33,.08); border-radius: 999px; background: rgba(255,255,255,.92); box-shadow: 0 5px 18px rgba(31,38,32,.09); font-size: 8px; font-weight: 700; }
 .map-context .memory-on { color: #12614f; background: #ddf1e9; }
