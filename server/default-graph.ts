@@ -1,5 +1,5 @@
-import contextData from '../src/cremorne-context.json'
-import { FIRST_EXCEPTION } from '../src/engine'
+import contextData from '../src/cremorne-context.json' with { type: 'json' }
+import { FIRST_EXCEPTION } from '../src/engine.js'
 import type { RetrievedMemory } from '../src/api-contracts'
 import type { GraphCapacityUnit, GraphPlace } from './graph-types'
 

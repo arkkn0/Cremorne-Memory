@@ -3,12 +3,12 @@ import type {
   ExperimentRequest, ExperimentResponse, OutcomeRequest, OutcomeResponse,
   RecommendRequest, RecommendResponse, StructuredDemand,
 } from '../src/api-contracts'
-import { buildExperimentRule, simulateScenario } from '../src/engine'
-import { explainOptions } from './explanations'
-import { getFallbackGraph, getGraphRepository } from './graph'
+import { buildExperimentRule, simulateScenario } from '../src/engine.js'
+import { explainOptions } from './explanations.js'
+import { getFallbackGraph, getGraphRepository } from './graph.js'
 import type { GraphRepository } from './graph-types'
-import { parseDemand, parseExperimentDemand } from './nlu'
-import { rankCapacity } from './ranking'
+import { parseDemand, parseExperimentDemand } from './nlu.js'
+import { rankCapacity } from './ranking.js'
 
 export async function recommend(
   request: RecommendRequest,

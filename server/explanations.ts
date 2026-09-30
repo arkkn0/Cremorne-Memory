@@ -1,5 +1,5 @@
 import type { DecisionContext, RankedCapacityOption, StructuredDemand } from '../src/api-contracts'
-import { llmConfigured, requestStructuredOutput } from './llm'
+import { llmConfigured, requestStructuredOutput } from './llm.js'
 
 const explanationSchema = {
   type: 'object',

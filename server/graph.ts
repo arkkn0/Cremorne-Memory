@@ -1,7 +1,7 @@
 import neo4j, { type Driver, type QueryResult, type RecordShape } from 'neo4j-driver'
 import type { DecisionContext, RetrievedMemory, StructuredDemand } from '../src/api-contracts'
 import type { GraphCapacityUnit, GraphNeighbourhood, GraphOutcomeWrite, GraphPlace, GraphRepository, PlaceResolution } from './graph-types'
-import { DEFAULT_CAPACITY_UNITS, DEFAULT_MEMORIES, DEFAULT_PLACES, WORKSPACE_MEMORY } from './default-graph'
+import { DEFAULT_CAPACITY_UNITS, DEFAULT_MEMORIES, DEFAULT_PLACES, WORKSPACE_MEMORY } from './default-graph.js'
 
 const normalise = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
