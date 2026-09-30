@@ -7,7 +7,8 @@ import {
 import CremorneMap from './CremorneMap'
 import { currentDecisionContext, getCandidateRoutes, getWorkspaceIssues, recommendCapacity, recordGraphOutcome, reviewCandidateRoute, reviewWorkspaceIssue } from './api'
 import type { CandidateRouteRecord, RecommendResponse, WorkspaceIssueKey, WorkspaceIssueRecord } from './api-contracts'
-import { loadJourneyOutcomes, loadMemory, saveJourneyOutcome } from './memory'
+import { loadJourneyOutcomes, loadMemory, loadRoomExperiences, saveJourneyOutcome, saveRoomExperience } from './memory'
+import type { RoomExperience } from './memory'
 import type { MemoryRule } from './domain'
 import {
   demandAtTime, evaluateProductRoutes, findSpaces, parseRouteBrief, parseSpaceBrief, productContext,
@@ -47,6 +48,24 @@ function bookingEnd(start: string, durationMinutes: number) {
   const [hour, minute] = start.split(':').map(Number)
   const total = Math.min(1439, hour * 60 + minute + durationMinutes)
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+function structuredDemandChips(decision: RecommendResponse | null) {
+  if (!decision) return []
+  const demand = decision.demand
+  if (demand.intent === 'movement') {
+    const chips = [decision.resolvedDestination?.name || demand.destinationText || 'Destination']
+    if (demand.arrivalDeadline) chips.push(`By ${demand.arrivalDeadline}`)
+    if (demand.requirements.lowUv) chips.push(`Low UV · ${demand.requirementStrength}`)
+    if (demand.requirements.stepFree) chips.push(`Step-free · ${demand.requirementStrength}`)
+    if (demand.preferences.crowding === 'lower') chips.push('Lower crowding')
+    if (demand.departureFlexibilityMinutes) chips.push(`Flexible ${demand.departureFlexibilityMinutes} min`)
+    return chips
+  }
+  const chips = [`${demand.capacityRequired} people`, `${demand.startTime || '14:00'} · ${demand.durationMinutes} min`]
+  if (demand.requirements.hybridEquipment) chips.push('Hybrid equipped')
+  if (demand.requirements.accessible) chips.push('Accessible')
+  return [...chips, ...demand.requirements.equipment]
 }
 
 function Brand({ compact = false }: { compact?: boolean }) {
@@ -287,6 +306,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const watchId = useRef<number | null>(null)
   const parsedBrief = useMemo(() => parseRouteBrief(brief), [brief])
+  const decisionChips = useMemo(() => structuredDemandChips(decision), [decision])
   const workers = demandAtTime(parsedBrief.destination, parsedBrief.departure)
   const localRoutes = useMemo(() => evaluateProductRoutes({ destination: parsedBrief.destination, need: parsedBrief.need, strength: parsedBrief.strength, flexibilityMin: parsedBrief.flexibilityMin, uvIndex: weather.uvIndex, workers, memoryRules: memory, personalOutcomes }), [parsedBrief, weather.uvIndex, workers, memory, personalOutcomes])
   const routes = useMemo(() => {
@@ -428,16 +448,15 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
         {stage === 'setup' && <div className="journey-step">
           {workerMode === 'mia' && <span className="step-kicker">MIA · ALBINISM + PHOTOSENSITIVITY</span>}<h1>What journey do you need?</h1><p>{workerMode === 'mia' ? 'Travel time, canopy evidence and her low-UV requirement shape Mia’s options.' : 'Describe it in your own words.'}</p>
           <label className="brief-composer"><span>JOURNEY BRIEF</span><textarea value={brief} onChange={(event) => { setBrief(event.target.value); resetForInput() }} rows={4}/></label>
-          <div className="brief-understood"><span>UNDERSTOOD</span><div>{parsedBrief.chips.map((chip) => <b key={chip}>{chip}</b>)}</div></div>
           {clarification && <div className="honest-gap"><ShieldAlert/><div><strong>Which destination?</strong><span>{clarification}</span></div></div>}
           <button className="primary-action" disabled={isFinding} onClick={findRoutes}>{isFinding ? 'Understanding your journey…' : 'Find guided actions'} <ArrowRight size={18} /></button>
         </div>}
 
         {stage === 'results' && <div className="journey-step">
           <button className="back-action" onClick={() => setStage('setup')}><ArrowLeft size={15} /> Change brief</button><h1>{noEligible ? 'No eligible action yet.' : 'Choose an action.'}</h1><p>{noEligible ? 'A required constraint cannot yet be verified.' : `${routes.filter((route) => route.eligible).length} actions fit your brief`}</p>
-          {noEligible ? <div className="honest-gap"><ShieldAlert /><div><strong>Required evidence unavailable</strong><span>{routes[0]?.reasons[0]}</span></div></div> : <div className="choice-list">{routes.map((route) => <button key={route.id} disabled={!route.eligible} onClick={() => setSelectedId(route.id)} className={`${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`}><i /><div><span>{route.recommended ? 'BEST FIT' : route.eligible ? 'ALTERNATIVE' : 'NOT ELIGIBLE'}</span><strong>{route.name}</strong><small>{route.eligible ? `${route.durationMin} min walk · ${route.canopyAdjacentPct}% canopy-adjacent` : route.reasons[0]}</small>{selected.id === route.id && route.eligible && <ul className="route-reasons">{route.reasons.slice(0, 3).map((reason) => <li key={reason}><Check size={12}/>{reason}</li>)}</ul>}</div>{selected.id === route.id && <Check size={17} />}</button> )}</div>}
-          {!noEligible && <button className="primary-action" onClick={startJourney}>Start live guidance <Navigation size={18} /></button>}
-          {!noEligible && <button className="secondary-action" onClick={() => { setDraftMode(true); setDraftStatus('idle') }}><PencilLine size={16}/> Suggest a route</button>}
+          {isFinding ? <div className="request-status"><Activity/><span><strong>Reading your request</strong><small>Live options are ready while Memory checks comparable outcomes.</small></span></div> : decisionChips.length > 0 ? <div className="brief-understood brief-understood--result"><span>YOUR NEED</span><div>{decisionChips.map((chip) => <b key={chip}>{chip}</b>)}</div></div> : <div className="request-status request-status--offline"><ShieldAlert/><span><strong>Live public-data options shown</strong><small>Memory could not refresh, so no new constraints are claimed.</small></span></div>}
+          {noEligible ? <div className="honest-gap"><ShieldAlert /><div><strong>Required evidence unavailable</strong><span>{routes[0]?.reasons[0]}</span></div></div> : <div className="choice-list">{routes.map((route) => <button key={route.id} disabled={!route.eligible} onClick={() => setSelectedId(route.id)} className={`${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`}><i /><div><span>{route.recommended ? 'BEST FIT' : route.eligible ? 'ALTERNATIVE' : 'NOT ELIGIBLE'}</span><strong>{route.name}</strong><small>{route.eligible ? `${route.durationMin} min walk · ${route.canopyAdjacentPct}% canopy-adjacent` : route.reasons[0]}</small>{selected.id === route.id && route.eligible && <small className="route-why-inline"><Check size={11}/>{route.reasons[0]}</small>}</div>{selected.id === route.id && <Check size={17} />}</button> )}</div>}
+          {!noEligible && <div className="journey-actions"><button className="primary-action" onClick={startJourney}>Start guidance <Navigation size={18} /></button><button className="secondary-action route-discovery-action" onClick={() => { setDraftMode(true); setDraftStatus('idle') }}><PencilLine size={16}/><span><strong>Draw a route</strong><small>Share local knowledge</small></span></button></div>}
         </div>}
 
         {stage === 'active' && <div className="journey-step active-journey">
@@ -483,6 +502,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
     : 'Find a 6-person hybrid room at 2pm.'
   const [brief, setBrief] = useState(initialBrief)
   const [appliedBrief, setAppliedBrief] = useState(initialBrief)
+  const [hasSearched, setHasSearched] = useState(false)
   const [selectedId, setSelectedId] = useState('boardroom')
   const [bookingStage, setBookingStage] = useState<'available' | 'booked'>('available')
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
@@ -491,25 +511,49 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
   const [issueDetail, setIssueDetail] = useState('')
   const [feedbackStatus, setFeedbackStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [showRoomFeedback, setShowRoomFeedback] = useState(false)
+  const [roomExperiences, setRoomExperiences] = useState<RoomExperience[]>(() => loadRoomExperiences())
+  const [workspaceEvidence, setWorkspaceEvidence] = useState<WorkspaceIssueRecord[]>([])
   const profileId = useMemo(() => workerMode === 'mia' ? MIA_PROFILE_ID : browserProfileId(), [workerMode])
   const parsedDraft = useMemo(() => parseSpaceBrief(brief), [brief])
   const parsedBrief = useMemo(() => parseSpaceBrief(appliedBrief), [appliedBrief])
+  const decisionChips = useMemo(() => structuredDemandChips(decision), [decision])
   const results = useMemo(() => {
     const local = findSpaces({ people: parsedBrief.people, durationMinutes: parsedBrief.durationMinutes, requireHybrid: parsedBrief.requireHybrid, requireAccessible: parsedBrief.requireAccessible, requiredEquipment: parsedBrief.requiredEquipment, timeLabel: parsedBrief.timeLabel, scope: 'shared' })
+      .map((space) => ({ ...space, rankingScore: space.capacity, recommended: false }))
     if (!decision?.options.length) return local
     return local.flatMap((space) => {
       const option = decision.options.find((candidate) => candidate.productId === space.id)
-      if (!option) return []
-      return [{ ...space, eligible: option.eligible, blockers: option.eligible ? [] : option.reasons }]
-    }).sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.capacity - b.capacity)
+      // Keep public capability records visible if a provider returns only a
+      // partial option set. This also prevents a transient API mismatch from
+      // leaving the room detail pane without a selected room.
+      if (!option) return [space]
+      return [{ ...space, eligible: option.eligible, blockers: option.eligible ? [] : option.reasons, rankingScore: option.score, recommended: option.recommended }]
+    }).sort((a, b) => Number(b.eligible) - Number(a.eligible) || Number(b.recommended) - Number(a.recommended) || a.rankingScore - b.rankingScore || a.capacity - b.capacity)
   }, [decision, parsedBrief])
   const capabilityMatches = results.filter((space) => space.blockers.every((blocker) => /availab|owner/i.test(blocker)))
   const eligibleSpaces = results.filter((space) => space.eligible)
   const selected = results.find((space) => space.id === selectedId) ?? capabilityMatches[0] ?? eligibleSpaces[0] ?? results[0]
   const selectedOption = decision?.options.find((option) => option.productId === selected?.id)
+  const selectedExperience = selected ? roomExperiences.find((experience) => experience.roomId === selected.id) : undefined
+  const selectedEvidence = selected ? workspaceEvidence.filter((issue) => issue.capacityUnitId === `workspace-${selected.id}`) : []
+  const previousOpenIssue = selectedExperience?.status === 'reported' ? selectedExperience : undefined
+  const seatsLeft = (space: typeof results[number]) => {
+    const option = decision?.options.find((candidate) => candidate.productId === space.id)
+    return Math.max(0, option?.remainingCapacity ?? space.capacity - parsedBrief.people)
+  }
   const chooseSpace = (id: string) => { setSelectedId(id); setBookingStage('available'); setFeedbackStatus('idle'); setShowRoomFeedback(false) }
+
+  useEffect(() => {
+    let active = true
+    getWorkspaceIssues().then((response) => { if (active) setWorkspaceEvidence(response.issues) }).catch(() => undefined)
+    return () => { active = false }
+  }, [])
+
   const searchSpaces = async () => {
-    setAppliedBrief(brief); setBookingStage('available'); setIsSearching(true)
+    const localBrief = parseSpaceBrief(brief)
+    const localMatches = findSpaces({ people: localBrief.people, durationMinutes: localBrief.durationMinutes, requireHybrid: localBrief.requireHybrid, requireAccessible: localBrief.requireAccessible, requiredEquipment: localBrief.requiredEquipment, timeLabel: localBrief.timeLabel, scope: 'shared' })
+    setAppliedBrief(brief); setHasSearched(true); setBookingStage('available'); setDecision(null); setIsSearching(true)
+    setSelectedId((localMatches.find((space) => space.eligible) ?? localMatches.find((space) => space.blockers.every((blocker) => /availab|owner/i.test(blocker))) ?? localMatches[0])?.id ?? 'boardroom')
     try {
       const response = await recommendCapacity({
         brief,
@@ -522,6 +566,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
     finally { setIsSearching(false) }
   }
   const submitRoomFeedback = async () => {
+    if (!selected) { setFeedbackStatus('error'); return }
     const option = decision?.options.find((candidate) => candidate.productId === selected.id)
     if (!decision || !option) { setFeedbackStatus('error'); return }
     setFeedbackStatus('saving')
@@ -535,17 +580,68 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
         metrics: {},
         workspaceIssues: [{ issue: roomIssue, detail: issueDetail.trim() || undefined, severity: 2 }],
       })
+      setRoomExperiences(saveRoomExperience({ roomId: selected.id, roomName: selected.name, issue: roomIssue, detail: issueDetail.trim() || `${roomIssue} needs attention`, status: 'reported' }))
+      getWorkspaceIssues().then((response) => setWorkspaceEvidence(response.issues)).catch(() => undefined)
       setFeedbackStatus('saved')
     } catch { setFeedbackStatus('error') }
   }
-  const availabilityUnknown = selected.blockers.some((blocker) => /availab|owner/i.test(blocker))
+
+  const confirmIssueResolved = async () => {
+    if (!selected || !previousOpenIssue || !decision || !selectedOption) { setFeedbackStatus('error'); return }
+    setFeedbackStatus('saving')
+    try {
+      await recordGraphOutcome({
+        decisionId: decision.decisionId,
+        capacityUnitId: selectedOption.id,
+        demand: decision.demand,
+        context: currentDecisionContext({ uvIndex: 0, temperature: 0, crowding: 0, workers: 0, profileId }),
+        feedback: 'better',
+        metrics: { roomFollowUpResolved: 1 },
+      })
+      setRoomExperiences(saveRoomExperience({ roomId: selected.id, roomName: selected.name, issue: previousOpenIssue.issue, detail: `${previousOpenIssue.issue} confirmed working after the previous report`, status: 'resolved' }))
+      setShowRoomFeedback(false)
+      setFeedbackStatus('idle')
+    } catch { setFeedbackStatus('error') }
+  }
+  const availabilityUnknown = selected?.blockers.some((blocker) => /availab|owner/i.test(blocker)) ?? false
 
   return (
     <section className="space-experience">
-      <aside className="space-search">{workerMode === 'mia' && <span className="step-kicker">MIA’S WORKSPACE NEEDS</span>}<h1>What space do you need?</h1><p>{workerMode === 'mia' ? 'Mia can require verified sun control as part of the match.' : 'Describe the meeting, time and equipment.'}</p><label className="brief-composer"><span>SPACE BRIEF</span><textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4}/></label><div className="duration-picker"><span>DURATION</span><div>{[30, 45, 60, 90].map((minutes) => <button key={minutes} className={parsedDraft.durationMinutes === minutes ? 'is-active' : ''} onClick={() => setBrief((current) => withSpaceDuration(current, minutes))}>{minutes} min</button>)}</div></div><div className="brief-understood"><span>UNDERSTOOD</span><div>{parsedDraft.chips.map((chip) => <b key={chip}>{chip}</b>)}</div></div><button className="primary-action space-search-action" disabled={isSearching} onClick={() => void searchSpaces()}>{isSearching ? 'Matching space × time…' : 'Find spaces'} <ArrowRight size={17}/></button><div className="space-match-count"><strong>{capabilityMatches.length}</strong><span>capability matches</span></div><div className="choice-list space-choice-list">{results.map((space) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={selected.id === space.id ? 'is-selected' : ''}><i/><div><span>{space.eligible ? 'AVAILABLE' : space.blockers.every((blocker) => /availab|owner/i.test(blocker)) ? 'CAPABILITY MATCH' : 'MISSING REQUIREMENT'}</span><strong>{space.name.replace('CDH ', '')}</strong><small>{space.capacity} people · {space.facilities.slice(0, 2).join(' · ')}</small></div>{selected.id === space.id && <Check size={16}/>}</button>)}</div></aside>
-      <div className="space-canvas"><div className="space-floor-label">CDH · PUBLIC VENUE DATA</div>{results.map((space, index) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={`room-shape room-${index + 1} ${selected.id === space.id ? 'is-selected' : ''} ${space.eligible ? 'is-eligible' : 'is-blocked'}`}><Building2 /><strong>{space.name.replace('CDH ', '')}</strong><span>{space.capacity} seats</span></button>)}<div className="floor-corridor">OWNER AVAILABILITY FEED</div></div>
-      <aside className="space-confirm"><span className="step-kicker">{selected.eligible ? 'ELIGIBLE SPACE' : availabilityUnknown ? 'CAPABILITY VERIFIED' : 'NOT A MATCH'}</span><h2>{selected.name}</h2><div className="space-access-class">{selectedOption?.accessClass === 'internal' ? 'INTERNAL · AUTHORISED USERS' : 'SHARED · OWNER-CONTROLLED WINDOW'}</div><div className="capacity-number"><strong>{selected.capacity}</strong><span>seats total<br/>fits {parsedBrief.people}</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selectedOption?.explanation && <p className="space-why"><strong>Why this room</strong>{selectedOption.explanation}</p>}{selected.eligible && bookingStage === 'available' && <><div className="booking-time"><Clock3 /><span><small>AVAILABLE WINDOW</small><strong>{selectedOption?.availableFrom ?? parsedBrief.timeLabel}–{selectedOption?.availableUntil ?? bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)}</strong></span></div><button className="primary-action" onClick={() => setBookingStage('booked')}>Book {parsedBrief.durationMinutes} minutes <Check size={18} /></button></>}{selected.eligible && bookingStage === 'booked' && <div className="booking-flow booking-complete"><div className="arrival-icon"><Check/></div><span className="step-kicker">ROOM BOOKED</span><strong>{selected.name}</strong><p>{parsedBrief.timeLabel}–{bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)} · {parsedBrief.people} people</p></div>}{!selected.eligible && availabilityUnknown && <div className="honest-gap"><Clock3/><div><strong>Capability matches your brief</strong><span>Current availability must come from the room owner before booking.</span></div></div>}{!selected.eligible && !availabilityUnknown && <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by the brief</strong><span>{selected.blockers.join(' · ')}</span></div></div>}<button className="room-report-action" disabled={!decision} onClick={() => { setShowRoomFeedback(true); setFeedbackStatus('idle') }}><MessageSquare size={16}/><span><strong>Report room experience</strong><small>Temperature, equipment, blinds or access</small></span><ArrowRight size={15}/></button></aside>
-      {showRoomFeedback && <div className="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="room-feedback-title"><div className="feedback-modal__card"><button className="feedback-modal__close" aria-label="Close room feedback" onClick={() => setShowRoomFeedback(false)}><X size={18}/></button>{feedbackStatus !== 'saved' ? <><span className="step-kicker">ROOM EXPERIENCE</span><h2 id="room-feedback-title">What should future workers know?</h2><p>{selected.name} · your report first updates your Personal Memory.</p><div className="issue-grid">{(['temperature', 'equipment', 'blinds', 'acoustics', 'accessibility'] as WorkspaceIssueKey[]).map((issue) => <button key={issue} className={roomIssue === issue ? 'is-active' : ''} onClick={() => setRoomIssue(issue)}>{issue}</button>)}</div><label><span>WHAT HAPPENED?</span><textarea value={issueDetail} onChange={(event) => setIssueDetail(event.target.value)} placeholder="For example: the adjustable blinds did not close." rows={3}/></label>{feedbackStatus === 'error' && <div className="honest-gap"><ShieldAlert/><div><strong>Could not save yet</strong><span>Please keep this window open and try once more.</span></div></div>}<button className="primary-action" disabled={feedbackStatus === 'saving'} onClick={() => void submitRoomFeedback()}>{feedbackStatus === 'saving' ? 'Saving…' : 'Save room experience'} <ArrowRight size={17}/></button></> : <div className="feedback-success"><div className="arrival-icon"><Check/></div><span className="step-kicker">SAVED</span><h2>Future matching can improve.</h2><p>Your experience is in Personal Memory. Repeated matching reports become a CDH review candidate before changing guidance for others.</p><button className="primary-action" onClick={() => setShowRoomFeedback(false)}>Done</button></div>}</div></div>}
+      <aside className="space-search">
+        {workerMode === 'mia' && <span className="step-kicker">MIA’S WORKSPACE NEEDS</span>}
+        <h1>What space do you need?</h1>
+        <p>{workerMode === 'mia' ? 'Ask for the meeting, time and the sun control Mia actually needs.' : 'Describe the meeting, time and equipment.'}</p>
+        <label className="brief-composer"><span>SPACE BRIEF</span><textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4}/></label>
+        <div className="duration-picker"><span>DURATION</span><div>{[30, 45, 60, 90].map((minutes) => <button key={minutes} className={parsedDraft.durationMinutes === minutes ? 'is-active' : ''} onClick={() => setBrief((current) => withSpaceDuration(current, minutes))}>{minutes} min</button>)}</div></div>
+        <button className="primary-action space-search-action" disabled={isSearching} onClick={() => void searchSpaces()}>{hasSearched ? 'Update matches' : 'Find rooms'} <ArrowRight size={17}/></button>
+        {hasSearched && (isSearching ? <div className="request-status"><Activity/><span><strong>Reading your request</strong><small>Capability matches are visible while Memory checks past room outcomes.</small></span></div> : decisionChips.length > 0 ? <div className="brief-understood brief-understood--result"><span>YOUR NEED</span><div>{decisionChips.map((chip) => <b key={chip}>{chip}</b>)}</div></div> : <div className="request-status request-status--offline"><ShieldAlert/><span><strong>Public capability matches shown</strong><small>Live Memory and owner availability could not refresh.</small></span></div>)}
+        {hasSearched && <><div className="space-match-count"><strong>{capabilityMatches.length}</strong><span>rooms match the requested capability</span></div><div className="choice-list space-choice-list">{results.map((space) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={selected?.id === space.id ? 'is-selected' : ''}><i/><div><span>{space.recommended ? 'BEST FIT' : space.eligible ? 'AVAILABLE' : space.blockers.every((blocker) => /availab|owner/i.test(blocker)) ? 'CAPABILITY MATCH' : 'MISSING REQUIREMENT'}</span><strong>{space.name.replace('CDH ', '')}</strong><small>{seatsLeft(space)} seats left after your group · {space.facilities.slice(0, 2).join(' · ')}</small></div>{selected?.id === space.id && <Check size={16}/>}</button>)}</div></>}
+      </aside>
+
+      <div className={`space-canvas ${!hasSearched ? 'space-canvas--empty' : ''}`}>
+        <div className="space-floor-label">CDH · PUBLIC VENUE CAPABILITIES</div>
+        {!hasSearched ? <div className="space-empty-state"><Building2/><strong>Describe the meeting first.</strong><span>We will show only rooms that fit the requested capacity and equipment.</span></div> : <>{results.map((space, index) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={`room-shape room-${index + 1} ${selected?.id === space.id ? 'is-selected' : ''} ${space.eligible ? 'is-eligible' : 'is-blocked'}`}><Building2 /><strong>{space.name.replace('CDH ', '')}</strong><span>{seatsLeft(space)} seats left</span></button>)}<div className="floor-corridor">OWNER AVAILABILITY FEED</div></>}
+      </div>
+
+      <aside className={`space-confirm ${!hasSearched ? 'space-confirm--empty' : ''}`}>
+        {!hasSearched || !selected ? <div className="space-empty-detail"><CircleGauge/><strong>One clear match at a time</strong><span>Capacity, access, equipment, availability and previous user comments will appear here.</span></div> : <>
+          <span className="step-kicker">{selected.eligible ? 'ELIGIBLE SPACE' : availabilityUnknown ? 'CAPABILITY VERIFIED' : 'NOT A MATCH'}</span>
+          <h2>{selected.name}</h2>
+          <div className="space-access-class">{(selectedOption?.accessClass ?? selected.accessClass) === 'internal' ? 'INTERNAL · AUTHORISED USERS' : 'SHARED · OWNER-CONTROLLED WINDOW'}</div>
+          <div className="capacity-number"><strong>{seatsLeft(selected)}</strong><span>seats left<br/>after this {parsedBrief.people}-person booking</span></div>
+          <div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>
+          {selectedOption?.explanation && <p className="space-why"><strong>Why this room</strong>{selectedOption.explanation}</p>}
+          {(previousOpenIssue || selectedEvidence.length > 0) && <div className="room-memory-card"><BrainCircuit/><div><span>PREVIOUS USER COMMENTS</span><strong>{previousOpenIssue ? `${previousOpenIssue.issue}: ${previousOpenIssue.detail}` : `${selectedEvidence[0].independentReporterCount} reports about ${selectedEvidence[0].issue}`}</strong><small>{previousOpenIssue ? 'After using the room, confirm whether this has been fixed.' : 'Repeated evidence is waiting for or has completed CDH review.'}</small></div></div>}
+          {selected.eligible && bookingStage === 'available' && <><div className="booking-time"><Clock3 /><span><small>AVAILABLE WINDOW</small><strong>{selectedOption?.availableFrom ?? parsedBrief.timeLabel}–{selectedOption?.availableUntil ?? bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)}</strong></span></div><button className="primary-action" onClick={() => setBookingStage('booked')}>Book {parsedBrief.durationMinutes} minutes <Check size={18} /></button></>}
+          {selected.eligible && bookingStage === 'booked' && <div className="booking-flow booking-complete"><div className="arrival-icon"><Check/></div><span className="step-kicker">ROOM BOOKED</span><strong>{selected.name}</strong><p>{parsedBrief.timeLabel}–{bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)} · {parsedBrief.people}-person meeting</p></div>}
+          {!selected.eligible && availabilityUnknown && <div className="honest-gap"><Clock3/><div><strong>Capability matches your brief</strong><span>The owner availability feed is required before this room can be booked.</span></div></div>}
+          {!selected.eligible && !availabilityUnknown && <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by your need</strong><span>{selected.blockers.join(' · ')}</span></div></div>}
+          {previousOpenIssue && decision && <div className="room-follow-up"><span>Last time: {previousOpenIssue.issue}</span><strong>Has it been fixed?</strong><div><button onClick={() => { setRoomIssue(previousOpenIssue.issue); setIssueDetail('The issue is still present.'); setShowRoomFeedback(true); setFeedbackStatus('idle') }}>Still a problem</button><button disabled={feedbackStatus === 'saving'} onClick={() => void confirmIssueResolved()}>Working now</button></div></div>}
+          <button className="room-report-action" disabled={!decision} onClick={() => { setShowRoomFeedback(true); setFeedbackStatus('idle') }}><MessageSquare size={16}/><span><strong>User comments</strong><small>Share what worked or what needs attention</small></span><ArrowRight size={15}/></button>
+        </>}
+      </aside>
+
+      {showRoomFeedback && selected && <div className="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="room-feedback-title"><div className="feedback-modal__card"><button className="feedback-modal__close" aria-label="Close room feedback" onClick={() => setShowRoomFeedback(false)}><X size={18}/></button>{feedbackStatus !== 'saved' ? <><span className="step-kicker">USER COMMENT</span><h2 id="room-feedback-title">What should the next worker know?</h2><p>{selected.name} · your comment first improves your own future matches.</p><div className="issue-grid">{(['temperature', 'equipment', 'blinds', 'acoustics', 'accessibility'] as WorkspaceIssueKey[]).map((issue) => <button key={issue} className={roomIssue === issue ? 'is-active' : ''} onClick={() => setRoomIssue(issue)}>{issue}</button>)}</div><label><span>YOUR COMMENT</span><textarea value={issueDetail} onChange={(event) => setIssueDetail(event.target.value)} placeholder="For example: the adjustable blinds did not close." rows={3}/></label>{feedbackStatus === 'error' && <div className="honest-gap"><ShieldAlert/><div><strong>Could not save yet</strong><span>Wait for the room match to finish, then try once more.</span></div></div>}<button className="primary-action" disabled={feedbackStatus === 'saving'} onClick={() => void submitRoomFeedback()}>{feedbackStatus === 'saving' ? 'Saving…' : 'Save comment'} <ArrowRight size={17}/></button></> : <div className="feedback-success"><div className="arrival-icon"><Check/></div><span className="step-kicker">PERSONAL MEMORY UPDATED</span><h2>The next match can improve.</h2><p>If independent users report the same issue, it becomes a CDH review candidate before affecting guidance for others.</p><button className="primary-action" onClick={() => setShowRoomFeedback(false)}>Done</button></div>}</div></div>}
     </section>
   )
 }
