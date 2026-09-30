@@ -13,7 +13,10 @@ function localApi(): Plugin {
             const chunks: Buffer[] = []
             for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
             const body = chunks.length ? Buffer.concat(chunks).toString('utf8') : undefined
-            const request = new Request(`http://localhost${path}${req.url === '/' ? '' : req.url}`, {
+            const forwardedProtocol = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+            const protocol = forwardedProtocol || 'http'
+            const host = req.headers.host || 'localhost'
+            const request = new Request(`${protocol}://${host}${path}${req.url === '/' ? '' : req.url}`, {
               method: req.method,
               headers: req.headers as Record<string, string>,
               body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity, ArrowLeft, ArrowRight, BrainCircuit, Building2, Check,
   CircleGauge, Clock3, FlaskConical, Home, Map as MapIcon,
-  Navigation, Play, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users,
+  Navigation, Play, RefreshCw, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users,
 } from 'lucide-react'
 import CremorneMap from './CremorneMap'
 import { currentDecisionContext, getWorkspaceIssues, recommendCapacity, recordGraphOutcome, reviewWorkspaceIssue } from './api'
@@ -247,6 +247,15 @@ function JourneyProgress({ stage }: { stage: JourneyStage }) {
   return <div className="journey-progress" aria-label="Journey progress">{['Your need', 'Choose', 'Complete'].map((label, index) => <div key={label} className={current >= index ? 'is-on' : ''}><i>{current > index ? <Check size={11} /> : index + 1}</i><span>{label}</span></div>)}</div>
 }
 
+function RetryNotice({ title, message, onRetry, retrying = false }: {
+  title: string
+  message: string
+  onRetry: () => void
+  retrying?: boolean
+}) {
+  return <div className="honest-gap action-error" role="alert"><ShieldAlert/><div><strong>{title}</strong><span>{message}</span></div><button disabled={retrying} onClick={onRetry}><RefreshCw size={13}/>{retrying ? 'Retrying' : 'Retry'}</button></div>
+}
+
 function TracePreview({ points }: { points: JourneyPoint[] }) {
   const path = useMemo(() => {
     if (points.length < 2) return ''
@@ -277,9 +286,12 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
   const [isFinding, setIsFinding] = useState(false)
   const [clarification, setClarification] = useState<string | null>(null)
+  const [routeError, setRouteError] = useState(false)
   const [journeyTrace, setJourneyTrace] = useState<JourneyPoint[]>([])
   const [feedback, setFeedback] = useState<'better' | 'same' | 'worse' | null>(null)
+  const [outcomeStatus, setOutcomeStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [shareStatus, setShareStatus] = useState<'idle' | 'sharing' | 'shared' | 'kept-private' | 'error'>('idle')
+  const [shareChoice, setShareChoice] = useState(false)
   const watchId = useRef<number | null>(null)
   const parsedBrief = useMemo(() => parseRouteBrief(brief), [brief])
   const workers = demandAtTime(parsedBrief.destination, parsedBrief.departure)
@@ -320,9 +332,9 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
     if (watchId.current != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId.current)
   }, [])
 
-  const resetForInput = () => { setStage('setup'); setSelectedId(undefined); setStartedAt(undefined); setElapsedSeconds(0); setDecision(null); setClarification(null); setJourneyTrace([]); setFeedback(null); setShareStatus('idle') }
+  const resetForInput = () => { setStage('setup'); setSelectedId(undefined); setStartedAt(undefined); setElapsedSeconds(0); setDecision(null); setClarification(null); setRouteError(false); setJourneyTrace([]); setFeedback(null); setOutcomeStatus('idle'); setShareStatus('idle') }
   const findRoutes = async () => {
-    setIsFinding(true); setClarification(null)
+    setIsFinding(true); setClarification(null); setRouteError(false)
     try {
       const response = await recommendCapacity({
         brief,
@@ -337,6 +349,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
     } catch {
       setDecision(null)
       setSelectedId(localRoutes.find((route) => route.eligible)?.id)
+      setRouteError(true)
       setStage('results')
     } finally {
       setIsFinding(false)
@@ -360,9 +373,9 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
     setStage('feedback')
   }
   const persistOutcome = async (value: 'better' | 'same' | 'worse', shareTrace: boolean) => {
-    if (!decision) return null
+    if (!decision) throw new Error('A graph-backed decision is required to store this outcome.')
     const graphOption = decision.options.find((option) => option.productId === selected.id)
-    if (!graphOption) return null
+    if (!graphOption) throw new Error('The selected option was not found in the graph-backed decision.')
     return recordGraphOutcome({
       decisionId: decision.decisionId,
       capacityUnitId: graphOption.id,
@@ -375,18 +388,26 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
       candidateRouteName: `Worker-discovered path to ${decision.resolvedDestination?.name ?? parsedBrief.destination}`,
     })
   }
+  const syncOutcome = async (value: 'better' | 'same' | 'worse') => {
+    setOutcomeStatus('saving')
+    try {
+      await persistOutcome(value, false)
+      setOutcomeStatus('saved')
+    } catch {
+      setOutcomeStatus('error')
+    }
+  }
   const recordFeedback = async (value: 'better' | 'same' | 'worse') => {
     setFeedback(value)
     setPersonalOutcomes(saveJourneyOutcome({ routeId: selected.id, routeName: selected.name, completedAt: new Date().toISOString(), elapsedSeconds, predictedMinutes: selected.durationMin, exposureIndex: selected.exposureIndex, feedback: value }))
     setStage('saved')
     const canShareNewPath = value === 'better' && isDistinctJourneyTrace(journeyTrace, selected.coordinates)
-    if (!canShareNewPath) {
-      try { await persistOutcome(value, false) } catch { /* Personal Memory remains available. */ }
-    }
+    if (!canShareNewPath) await syncOutcome(value)
   }
   const canShareNewPath = feedback === 'better' && isDistinctJourneyTrace(journeyTrace, selected.coordinates)
   const chooseTraceSharing = async (shareTrace: boolean) => {
     if (!feedback) return
+    setShareChoice(shareTrace)
     setShareStatus(shareTrace ? 'sharing' : 'kept-private')
     try {
       const response = await persistOutcome(feedback, shareTrace)
@@ -410,6 +431,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
 
         {stage === 'results' && <div className="journey-step">
           <button className="back-action" onClick={() => setStage('setup')}><ArrowLeft size={15} /> Change brief</button><h1>{noEligible ? 'No eligible action yet.' : 'Choose an action.'}</h1><p>{noEligible ? 'A required constraint cannot yet be verified.' : `${routes.filter((route) => route.eligible).length} actions fit your brief`}</p>
+          {routeError && <RetryNotice title="Live matching unavailable" message="Showing local route evidence for now. Retry to include the Capacity Graph and Memory." onRetry={() => void findRoutes()} retrying={isFinding}/>}
           {noEligible ? <div className="honest-gap"><ShieldAlert /><div><strong>Required evidence unavailable</strong><span>{routes[0]?.reasons[0]}</span></div></div> : <div className="choice-list">{routes.map((route) => <button key={route.id} disabled={!route.eligible} onClick={() => setSelectedId(route.id)} className={`${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`}><i /><div><span>{route.recommended ? 'BEST FIT' : route.eligible ? 'ALTERNATIVE' : 'NOT ELIGIBLE'}</span><strong>{route.name}</strong><small>{route.eligible ? `${route.durationMin} min walk · ${route.canopyAdjacentPct}% canopy-adjacent` : route.reasons[0]}</small>{selected.id === route.id && route.eligible && <ul className="route-reasons">{route.reasons.slice(0, 3).map((reason) => <li key={reason}><Check size={12}/>{reason}</li>)}</ul>}</div>{selected.id === route.id && <Check size={17} />}</button> )}</div>}
           {!noEligible && <button className="primary-action" onClick={startJourney}>Start live guidance <Navigation size={18} /></button>}
         </div>}
@@ -428,7 +450,9 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
           {shareStatus === 'sharing' && <div className="feedback-saved"><Activity/><span>Adding the path to the Capacity Graph…</span></div>}
           {shareStatus === 'shared' && <div className="candidate-saved"><Check/><span><strong>Candidate path added</strong><small>CDH can compare it before wider guidance.</small></span></div>}
           {shareStatus === 'kept-private' && canShareNewPath && <div className="feedback-saved"><Check/><span>Only your personal outcome was retained.</span></div>}
-          {shareStatus === 'error' && <div className="honest-gap"><ShieldAlert/><div><strong>Path not shared yet</strong><span>Your personal outcome is still saved.</span></div></div>}
+          {!canShareNewPath && outcomeStatus === 'saving' && <div className="feedback-saved"><Activity/><span>Syncing this outcome with Memory…</span></div>}
+          {!canShareNewPath && outcomeStatus === 'error' && feedback && <RetryNotice title="Memory sync failed" message="The outcome remains on this device. Retry when the connection is available." onRetry={() => void syncOutcome(feedback)}/>}
+          {shareStatus === 'error' && <RetryNotice title={shareChoice ? 'Path not shared yet' : 'Private outcome not synced'} message="Your personal outcome remains on this device." onRetry={() => void chooseTraceSharing(shareChoice)}/>}
           {(!canShareNewPath || shareStatus !== 'idle') && shareStatus !== 'sharing' && <button className="primary-action" onClick={resetForInput}>Plan another journey <ArrowRight size={18} /></button>}
         </div>}
       </aside>
@@ -452,6 +476,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
   const [bookingStage, setBookingStage] = useState<'available' | 'booked'>('available')
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState(false)
   const [roomIssue, setRoomIssue] = useState<WorkspaceIssueKey>('temperature')
   const [issueDetail, setIssueDetail] = useState('')
   const [feedbackStatus, setFeedbackStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -473,7 +498,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
   const selectedOption = decision?.options.find((option) => option.productId === selected?.id)
   const chooseSpace = (id: string) => { setSelectedId(id); setBookingStage('available'); setFeedbackStatus('idle') }
   const searchSpaces = async () => {
-    setAppliedBrief(brief); setBookingStage('available'); setIsSearching(true)
+    setAppliedBrief(brief); setBookingStage('available'); setIsSearching(true); setSearchError(false)
     try {
       const response = await recommendCapacity({
         brief,
@@ -482,7 +507,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
       })
       setDecision(response)
       setSelectedId(response.recommendation?.productId ?? response.options.find((option) => option.productId === 'boardroom')?.productId ?? response.options[0]?.productId ?? 'boardroom')
-    } catch { setDecision(null) }
+    } catch { setDecision(null); setSearchError(true) }
     finally { setIsSearching(false) }
   }
   const submitRoomFeedback = async () => {
@@ -506,9 +531,9 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
 
   return (
     <section className="space-experience">
-      <aside className="space-search">{workerMode === 'mia' && <span className="step-kicker">MIA’S WORKSPACE NEEDS</span>}<h1>What space do you need?</h1><p>{workerMode === 'mia' ? 'Mia can require verified sun control as part of the match.' : 'Describe the meeting, time and equipment.'}</p><label className="brief-composer"><span>SPACE BRIEF</span><textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4}/></label><div className="duration-picker"><span>DURATION</span><div>{[30, 45, 60, 90].map((minutes) => <button key={minutes} className={parsedDraft.durationMinutes === minutes ? 'is-active' : ''} onClick={() => setBrief((current) => withSpaceDuration(current, minutes))}>{minutes} min</button>)}</div></div><div className="brief-understood"><span>UNDERSTOOD</span><div>{parsedDraft.chips.map((chip) => <b key={chip}>{chip}</b>)}</div></div><button className="primary-action space-search-action" disabled={isSearching} onClick={() => void searchSpaces()}>{isSearching ? 'Matching space × time…' : 'Find spaces'} <ArrowRight size={17}/></button><div className="space-match-count"><strong>{capabilityMatches.length}</strong><span>capability matches</span></div><div className="choice-list space-choice-list">{results.map((space) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={selected.id === space.id ? 'is-selected' : ''}><i/><div><span>{space.eligible ? 'AVAILABLE' : space.blockers.every((blocker) => /availab|owner/i.test(blocker)) ? 'CAPABILITY MATCH' : 'MISSING REQUIREMENT'}</span><strong>{space.name.replace('CDH ', '')}</strong><small>{space.capacity} people · {space.facilities.slice(0, 2).join(' · ')}</small></div>{selected.id === space.id && <Check size={16}/>}</button>)}</div></aside>
+      <aside className="space-search">{workerMode === 'mia' && <span className="step-kicker">MIA’S WORKSPACE NEEDS</span>}<h1>What space do you need?</h1><p>{workerMode === 'mia' ? 'Mia can require verified sun control as part of the match.' : 'Describe the meeting, time and equipment.'}</p><label className="brief-composer"><span>SPACE BRIEF</span><textarea value={brief} onChange={(event) => { setBrief(event.target.value); setSearchError(false) }} rows={4}/></label><div className="duration-picker"><span>DURATION</span><div>{[30, 45, 60, 90].map((minutes) => <button key={minutes} className={parsedDraft.durationMinutes === minutes ? 'is-active' : ''} onClick={() => setBrief((current) => withSpaceDuration(current, minutes))}>{minutes} min</button>)}</div></div><div className="brief-understood"><span>UNDERSTOOD</span><div>{parsedDraft.chips.map((chip) => <b key={chip}>{chip}</b>)}</div></div><button className="primary-action space-search-action" disabled={isSearching} onClick={() => void searchSpaces()}>{isSearching ? 'Matching space × time…' : 'Find spaces'} <ArrowRight size={17}/></button>{searchError && <RetryNotice title="Live room matching unavailable" message="Showing published room capabilities without live Memory. Retry to refresh the match." onRetry={() => void searchSpaces()} retrying={isSearching}/>}<div className="space-match-count"><strong>{capabilityMatches.length}</strong><span>capability matches</span></div><div className="choice-list space-choice-list">{results.map((space) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={selected.id === space.id ? 'is-selected' : ''}><i/><div><span>{space.eligible ? 'AVAILABLE' : space.blockers.every((blocker) => /availab|owner/i.test(blocker)) ? 'CAPABILITY MATCH' : 'MISSING REQUIREMENT'}</span><strong>{space.name.replace('CDH ', '')}</strong><small>{space.capacity} people · {space.facilities.slice(0, 2).join(' · ')}</small></div>{selected.id === space.id && <Check size={16}/>}</button>)}</div></aside>
       <div className="space-canvas"><div className="space-floor-label">CDH · PUBLIC VENUE DATA</div>{results.map((space, index) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={`room-shape room-${index + 1} ${selected.id === space.id ? 'is-selected' : ''} ${space.eligible ? 'is-eligible' : 'is-blocked'}`}><Building2 /><strong>{space.name.replace('CDH ', '')}</strong><span>{space.capacity} seats</span></button>)}<div className="floor-corridor">OWNER AVAILABILITY FEED</div></div>
-      <aside className="space-confirm"><span className="step-kicker">{selected.eligible ? 'ELIGIBLE SPACE' : availabilityUnknown ? 'CAPABILITY VERIFIED' : 'NOT A MATCH'}</span><h2>{selected.name}</h2><div className="space-access-class">PUBLICLY BOOKABLE · OWNER CONFIRMS WINDOW</div><div className="capacity-number"><strong>{selected.capacity}</strong><span>people</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selectedOption?.explanation && <p className="space-why"><strong>Why this room</strong>{selectedOption.explanation}</p>}{selected.eligible && bookingStage === 'available' && <><div className="booking-time"><Clock3 /><span><small>OWNER FEED CONFIRMED</small><strong>{selectedOption?.availableFrom ?? parsedBrief.timeLabel}–{selectedOption?.availableUntil ?? bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)}</strong></span></div><button className="primary-action" onClick={() => setBookingStage('booked')}>Book this room <Check size={18} /></button></>}{selected.eligible && bookingStage === 'booked' && <div className="booking-flow booking-complete"><div className="arrival-icon"><Check/></div><span className="step-kicker">ROOM BOOKED</span><strong>{selected.name}</strong><p>The owner feed confirmed the full meeting window.</p></div>}{!selected.eligible && availabilityUnknown && <div className="honest-gap"><Clock3/><div><strong>Capability matches your brief</strong><span>Current availability must come from the room owner before booking.</span></div></div>}{!selected.eligible && !availabilityUnknown && <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by the brief</strong><span>{selected.blockers.join(' · ')}</span></div></div>}<div className="room-feedback"><strong>Used this room before?</strong><div className="facility-list">{(['temperature', 'equipment', 'blinds', 'acoustics', 'accessibility'] as WorkspaceIssueKey[]).map((issue) => <button key={issue} className={roomIssue === issue ? 'is-active' : ''} onClick={() => setRoomIssue(issue)}>{issue}</button>)}</div><input value={issueDetail} onChange={(event) => setIssueDetail(event.target.value)} placeholder="What happened? (optional)"/><button className="secondary-action" disabled={feedbackStatus === 'saving'} onClick={() => void submitRoomFeedback()}>{feedbackStatus === 'saving' ? 'Saving…' : feedbackStatus === 'saved' ? 'Saved to your Memory' : 'Share room outcome'}</button>{feedbackStatus === 'saved' && <small>Repeated independent reports become a CDH review candidate before they affect other workers.</small>}</div></aside>
+      <aside className="space-confirm"><span className="step-kicker">{selected.eligible ? 'ELIGIBLE SPACE' : availabilityUnknown ? 'CAPABILITY VERIFIED' : 'NOT A MATCH'}</span><h2>{selected.name}</h2><div className="space-access-class">PUBLICLY BOOKABLE · OWNER CONFIRMS WINDOW</div><div className="capacity-number"><strong>{selected.capacity}</strong><span>people</span></div><div className="facility-list">{selected.facilities.map((facility) => <span key={facility}>{facility}</span>)}</div>{selectedOption?.explanation && <p className="space-why"><strong>Why this room</strong>{selectedOption.explanation}</p>}{selected.eligible && bookingStage === 'available' && <><div className="booking-time"><Clock3 /><span><small>OWNER FEED CONFIRMED</small><strong>{selectedOption?.availableFrom ?? parsedBrief.timeLabel}–{selectedOption?.availableUntil ?? bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)}</strong></span></div><button className="primary-action" onClick={() => setBookingStage('booked')}>Book this room <Check size={18} /></button></>}{selected.eligible && bookingStage === 'booked' && <div className="booking-flow booking-complete"><div className="arrival-icon"><Check/></div><span className="step-kicker">ROOM BOOKED</span><strong>{selected.name}</strong><p>The owner feed confirmed the full meeting window.</p></div>}{!selected.eligible && availabilityUnknown && <div className="honest-gap"><Clock3/><div><strong>Capability matches your brief</strong><span>Current availability must come from the room owner before booking.</span></div></div>}{!selected.eligible && !availabilityUnknown && <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by the brief</strong><span>{selected.blockers.join(' · ')}</span></div></div>}<div className="room-feedback"><strong>Used this room before?</strong><div className="facility-list">{(['temperature', 'equipment', 'blinds', 'acoustics', 'accessibility'] as WorkspaceIssueKey[]).map((issue) => <button key={issue} className={roomIssue === issue ? 'is-active' : ''} onClick={() => setRoomIssue(issue)}>{issue}</button>)}</div><input value={issueDetail} onChange={(event) => setIssueDetail(event.target.value)} placeholder="What happened? (optional)"/>{feedbackStatus !== 'error' && <button className="secondary-action" disabled={feedbackStatus === 'saving'} onClick={() => void submitRoomFeedback()}>{feedbackStatus === 'saving' ? 'Saving…' : feedbackStatus === 'saved' ? 'Saved to your Memory' : 'Share room outcome'}</button>}{feedbackStatus === 'saved' && <small>Repeated independent reports become a CDH review candidate before they affect other workers.</small>}{feedbackStatus === 'error' && <RetryNotice title="Room outcome not saved" message="Nothing was added to shared Memory. Retry when the connection is available." onRetry={() => void submitRoomFeedback()}/>}</div></aside>
     </section>
   )
 }
@@ -521,12 +546,14 @@ function OperatorExperience({ weather, onSeeWorker }: {
 }) {
   const [issues, setIssues] = useState<WorkspaceIssueRecord[]>([])
   const [loadingIssues, setLoadingIssues] = useState(true)
+  const [issuesError, setIssuesError] = useState(false)
+  const [reviewingIssueId, setReviewingIssueId] = useState<string | null>(null)
   const hotspot = productContext.hotspots[0]
   const direct = productContext.routeSets['east-richmond'][0]
   const canopy = productContext.routeSets['east-richmond'][2]
   const refreshIssues = async () => {
-    setLoadingIssues(true)
-    try { setIssues((await getWorkspaceIssues()).issues) } catch { setIssues([]) }
+    setLoadingIssues(true); setIssuesError(false)
+    try { setIssues((await getWorkspaceIssues()).issues) } catch { setIssuesError(true) }
     finally { setLoadingIssues(false) }
   }
   useEffect(() => {
@@ -534,15 +561,22 @@ function OperatorExperience({ weather, onSeeWorker }: {
     getWorkspaceIssues().then((response) => {
       if (active) setIssues(response.issues)
     }).catch(() => {
-      if (active) setIssues([])
+      if (active) setIssuesError(true)
     }).finally(() => {
       if (active) setLoadingIssues(false)
     })
     return () => { active = false }
   }, [])
   const validateIssue = async (issue: WorkspaceIssueRecord) => {
-    await reviewWorkspaceIssue({ issueId: issue.id, decision: 'validate', reason: `CDH confirmed the repeated ${issue.issue} reports.` })
-    await refreshIssues()
+    setReviewingIssueId(issue.id); setIssuesError(false)
+    try {
+      await reviewWorkspaceIssue({ issueId: issue.id, decision: 'validate', reason: `CDH confirmed the repeated ${issue.issue} reports.` })
+      await refreshIssues()
+    } catch {
+      setIssuesError(true)
+    } finally {
+      setReviewingIssueId(null)
+    }
   }
   return (
     <main className="operator-clear">
@@ -558,7 +592,7 @@ function OperatorExperience({ weather, onSeeWorker }: {
           <div className="result-pair"><div><span>DIRECT B</span><strong>{direct.durationMin} min</strong><small>{direct.canopyAdjacentPct}% canopy-adjacent</small></div><div><span>CANOPY C</span><strong>{canopy.durationMin} min</strong><small>{canopy.canopyAdjacentPct}% canopy-adjacent</small></div></div>
           <div className="brief-understood"><span>FIELD OUTCOME</span><div><b>actual journey time</b><b>crossing wait</b><b>direct-sun minutes</b><b>Better / Same / Worse</b></div></div>
           <div className="operator-signal operator-signal--compact"><strong>{issues.filter((issue) => issue.status === 'candidate').length}</strong><span>room issues ready for CDH review</span></div>
-          <div className="operator-issue-list">{loadingIssues ? <small>Loading room evidence…</small> : issues.length === 0 ? <small>No repeated room issue has reached the review threshold.</small> : issues.slice(0, 3).map((issue) => <div key={issue.id}><span><strong>{issue.capacityName}</strong><small>{issue.issue} · {issue.independentReporterCount} independent reports · {issue.status}</small></span>{issue.status === 'candidate' && <button onClick={() => void validateIssue(issue)}>Validate</button>}</div>)}</div>
+          <div className="operator-issue-list">{issuesError ? <RetryNotice title="Room evidence unavailable" message="The current review list could not be loaded or updated." onRetry={() => void refreshIssues()} retrying={loadingIssues}/> : loadingIssues ? <small>Loading room evidence…</small> : issues.length === 0 ? <small>No repeated room issue has reached the review threshold.</small> : issues.slice(0, 3).map((issue) => <div key={issue.id}><span><strong>{issue.capacityName}</strong><small>{issue.issue} · {issue.independentReporterCount} independent reports · {issue.status}</small></span>{issue.status === 'candidate' && <button disabled={reviewingIssueId === issue.id} onClick={() => void validateIssue(issue)}>{reviewingIssueId === issue.id ? 'Validating…' : 'Validate'}</button>}</div>)}</div>
           <button className="primary-action" onClick={onSeeWorker}>Open the worker journey <ArrowRight size={18}/></button>
         </aside>
       </section>
