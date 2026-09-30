@@ -523,6 +523,14 @@ img, svg { display: block; max-width: 100%; }
 .arrival-metrics div { display: grid; gap: 3px; padding: 12px 5px; border-radius: 10px; background: #f0f3ef; }
 .arrival-metrics strong { font-size: 24px; }
 .arrival-metrics span { color: #747c75; font-size: 7px; }
+.journey-observations { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: -12px 0 16px; text-align: left; }
+.journey-observations label { display: grid; gap: 6px; padding: 10px 11px; border: 1px solid rgba(32,37,33,.1); border-radius: 10px; background: #fff; }
+.journey-observations label > span { color: #747c75; font-size: 7px; letter-spacing: .09em; font-weight: 800; }
+.journey-observations label > div { display: flex; align-items: baseline; gap: 5px; }
+.journey-observations input { min-width: 0; width: 100%; padding: 0; border: 0; outline: 0; color: #202521; background: transparent; font-size: 18px; font-weight: 800; }
+.journey-observations input::placeholder { color: #a3aaa4; }
+.journey-observations b { color: #747c75; font-size: 8px; }
+.feedback-question { display: block; margin: 0 0 8px; text-align: left; font-size: 9px; }
 .feedback-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
 .feedback-row button { min-height: 45px; border: 1px solid rgba(32,37,33,.12); border-radius: 11px; color: #626a63; background: #fff; font-size: 9px; font-weight: 800; }
 .feedback-row button:hover, .feedback-row button.is-active { color: #202521; border-color: #202521; background: #ffd85a; }
@@ -703,6 +711,11 @@ img, svg { display: block; max-width: 100%; }
 .operator-signal span { color: #7b837c; font-size: 9px; }
 .operator-signal--compact { margin: 8px 0 16px; }
 .operator-signal--compact strong { font-size: 44px; }
+.operator-observed { display: grid; gap: 5px; margin: 12px 0; padding: 12px; border-radius: 11px; color: #155d4e; background: #e6f3ee; }
+.operator-observed > span { font-size: 7px; letter-spacing: .1em; font-weight: 800; }
+.operator-observed > strong { color: #202521; font-size: 11px; text-transform: capitalize; }
+.operator-observed > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.operator-observed b { padding: 5px 7px; border-radius: 999px; color: #155d4e; background: #fff; font-size: 7px; }
 .operator-brief { margin-top: 13px; }
 .testing-state { display: grid; place-items: center; align-content: center; flex: 1; text-align: center; }
 .testing-orb { width: 78px; height: 78px; display: grid; place-items: center; margin-bottom: 22px; border-radius: 50%; color: #202521; background: #ffd85a; animation: testing-pulse .8s ease-in-out infinite alternate; }
@@ -967,6 +980,7 @@ img, svg { display: block; max-width: 100%; }
   .space-confirm { order: 2; min-height: auto; overflow: visible; }
   .space-canvas { order: 3; min-height: 420px; }
   .route-sketch-card { position: fixed; right: 10px; bottom: 10px; width: calc(100% - 20px); }
+  .journey-observations { grid-template-columns: 1fr; }
   .issue-grid { grid-template-columns: repeat(2,1fr); }
   .feedback-modal__card { padding: 24px 18px 18px; }
   .candidate-evidence-grid, .candidate-review-actions { grid-template-columns: 1fr; }

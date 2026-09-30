@@ -366,12 +366,24 @@ export class Neo4jCapacityGraph implements GraphRepository {
 
   async ensureSeeded() {
     if (process.env.CREMORNE_AUTO_SEED === 'false') return
-    if (!seedPromise) seedPromise = this.seed()
+    if (!seedPromise) seedPromise = this.seedIfEmpty()
     return seedPromise
   }
 
   private async run(query: string, parameters: Record<string, unknown> = {}): Promise<QueryResult<RecordShape>> {
     return this.driver.executeQuery(query, parameters, { database: database() })
+  }
+
+  private async seedIfEmpty() {
+    const result = await this.run(`
+      MATCH (place:Place)
+      WITH count(place) AS places
+      MATCH (capacity:CapacityUnit)
+      RETURN places, count(capacity) AS capacities
+    `)
+    const record = result.records[0]
+    if (record && toNumber(record.get('places')) > 0 && toNumber(record.get('capacities')) > 0) return
+    await this.seed()
   }
 
   private async seed() {
@@ -510,8 +522,8 @@ export class Neo4jCapacityGraph implements GraphRepository {
     const outcomeResult = await this.run(`
       MATCH (capacity:CapacityUnit)-[:HAS_OUTCOME]->(outcome:Outcome)-[:FOR_REQUIREMENT]->(requirement:Requirement)
       WHERE capacity.id IN $ids AND requirement.key IN $requirements
-        AND (coalesce(outcome.scope, 'cohort') <> 'personal'
-          OR ($profileId <> '' AND outcome.profileId = $profileId))
+        AND (outcome.scope IN ['cohort', 'precinct']
+          OR (outcome.scope = 'personal' AND $profileId <> '' AND outcome.profileId = $profileId))
       RETURN capacity.id AS capacityId, outcome, requirement.key AS requirementKey
       ORDER BY outcome.createdAt DESC
       LIMIT 20

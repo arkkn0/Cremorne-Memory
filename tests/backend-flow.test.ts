@@ -13,6 +13,18 @@ const context: DecisionContext = {
 }
 
 describe('graph-grounded decision loop', () => {
+  it('ranks the canopy route first when low UV is required', async () => {
+    const response = await recommend({
+      action: 'recommend',
+      brief: 'Get me to East Richmond by 4:20pm with minimal direct sun.',
+      context: { ...context, profileId: 'fresh-worker' },
+      useMemory: true,
+    }, new InMemoryCapacityGraph())
+
+    expect(response.recommendation?.name).toContain('Shadow Route C')
+    expect(response.recommendation?.shadePercent).toBe(28)
+  })
+
   it('starts without invented Memory and retrieves a real recorded personal outcome', async () => {
     const graph = new InMemoryCapacityGraph()
     const withoutMemory = await recommend({ action: 'recommend', brief: 'Get me to East Richmond by 4:20pm and avoid direct sun.', context, useMemory: false }, graph)
@@ -58,7 +70,7 @@ describe('graph-grounded decision loop', () => {
       demand: first.demand,
       context,
       feedback: 'better' as const,
-      metrics: { elapsedSeconds: 510 },
+      metrics: { elapsedSeconds: 510, crossingWaitMinutes: 1.5, directSunMinutes: 2 },
       shareTrace: true,
       journeyTrace: [[-37.83036, 144.99455], [-37.8298, 144.9954], [-37.8289, 144.9964]] as [number, number][],
       candidateRouteName: 'Worker-discovered shaded lane',
@@ -72,6 +84,7 @@ describe('graph-grounded decision loop', () => {
     expect(retried.outcomeId).toBe(stored.outcomeId)
     expect(retried.candidateCapacityId).toBe(stored.candidateCapacityId)
     expect(candidates.candidates).toHaveLength(1)
+    expect(candidates.candidates[0].metrics).toMatchObject({ crossingWaitMinutes: 1.5, directSunMinutes: 2 })
     expect(next.retrievedMemory.filter((memory) => memory.id === stored.outcomeId)).toHaveLength(1)
 
     await reviewCandidateRoute({

@@ -36,7 +36,7 @@ function rankMovement(
   const remainingCapacity = capacityKnown ? capacity.safeCapacity - predictedDemand - accepted : 0
   const durationMinutes = capacity.durationMinutes ?? 10
   const shadePercent = capacity.shadePercent ?? 0
-  const exposureIndex = Math.round(context.uvIndex * durationMinutes)
+  const exposureIndex = Math.round(context.uvIndex * durationMinutes * (1 - shadePercent / 100))
   const reasons: string[] = []
   let eligible = true
 
@@ -60,18 +60,18 @@ function rankMovement(
     reasons.push(`Predicted demand exceeds the route’s modelled capacity by ${Math.abs(remainingCapacity)}.`)
   }
 
-  if (capacityKnown && eligible) reasons.push(`${remainingCapacity} measured capacity remains at arrival.`)
-  if (!capacityKnown) reasons.push('Live route capacity requires the Cremorne smart-pole feed.')
-  reasons.push(`${durationMinutes} minutes from Valhalla / OpenStreetMap routing.`)
-  if (shadePercent > 0) reasons.push(`${shadePercent}% canopy-adjacent geometry from Vicmap trees.`)
+  if (capacityKnown && eligible) reasons.push(`${remainingCapacity} places remain at the expected arrival time.`)
+  reasons.push(`${durationMinutes} minutes to your destination.`)
+  if (shadePercent > 0) reasons.push(`${shadePercent}% of the route is next to mapped canopy.`)
   memories.slice(0, 1).forEach((memory) => reasons.push(memory.summary))
 
-  const timeWeight = demand.preferences.crowding === 'lower' ? 5 : 10
+  const prioritisesLowerUv = demand.requirements.lowUv || demand.preferences.uv === 'lower'
+  const timeWeight = prioritisesLowerUv || demand.preferences.crowding === 'lower' ? 5 : 10
   const crowdingWeight = capacityKnown && demand.preferences.crowding === 'lower' ? 1.45 : 0
   const exposureWeight = 0
   const remainingPenalty = capacityKnown ? (remainingCapacity < 12 ? 70 : remainingCapacity < 24 ? 18 : 0) : 0
   const memoryScore = memories.reduce((total, memory) => total + memory.effect * memory.confidence, 0)
-  const shadeCredit = (demand.requirements.lowUv || demand.preferences.uv === 'lower') ? shadePercent * 0.4 : 0
+  const shadeCredit = prioritisesLowerUv ? shadePercent * 0.9 : 0
   const score = durationMinutes * timeWeight
     + predictedDemand * crowdingWeight
     + exposureIndex * exposureWeight

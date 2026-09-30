@@ -122,7 +122,7 @@ export function parseRouteBrief(brief: string): ParsedRouteBrief {
   const destination: DestinationId = text.includes('east richmond') ? 'east-richmond' : 'richmond'
   const need: ProductNeed = /step[- ]?free|wheelchair|mobility/.test(text)
     ? 'step-free'
-    : /avoid (direct )?sun|low[- ]?uv|minimi[sz]e uv|photosens|albin|glare/.test(text)
+    : /avoid (direct )?sun|minimal (direct )?sun|low[- ]?uv|minimi[sz]e (direct )?(sun|uv)|photosens|albin|glare/.test(text)
       ? 'lower-uv'
       : /less crowded|lower crowd|quiet route|avoid crowd/.test(text)
         ? 'lower-crowding'
@@ -200,7 +200,7 @@ export function evaluateProductRoutes({
     const predictedLoad = workers
     const capacity = 0
     const remainingCapacity = 0
-    const exposureIndex = Math.round(uvIndex * route.durationMin)
+    const exposureIndex = Math.round(uvIndex * route.durationMin * (1 - route.canopyAdjacentPct / 100))
     const personalOutcome = personalOutcomes.find((outcome) => outcome.routeId === route.id)
     const reasons: string[] = []
     let eligible = true

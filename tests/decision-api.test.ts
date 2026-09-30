@@ -105,6 +105,29 @@ describe('decision API contract', () => {
     expect(await response.json()).toMatchObject({ error: 'Invalid decision request.' })
   })
 
+  it('accepts a map-drawn route as a review proposal without inventing a journey rating', async () => {
+    const recommendationResponse = await post(JSON.stringify({
+      action: 'recommend',
+      brief: 'Get me to East Richmond by 4:20pm.',
+      context: { uvIndex: 8, temperature: 30, crowding: 50, workers: 20, requestedAt: '2026-10-01T09:00:00+10:00', profileId: 'route-designer' },
+    }))
+    const recommendation = await recommendationResponse.json()
+    const response = await post(JSON.stringify({
+      action: 'outcome',
+      decisionId: recommendation.decisionId,
+      capacityUnitId: recommendation.recommendation.id,
+      demand: recommendation.demand,
+      context: { uvIndex: 8, temperature: 30, crowding: 50, workers: 20, requestedAt: '2026-10-01T09:00:00+10:00', profileId: 'route-designer' },
+      metrics: { drawnPointCount: 3 },
+      shareTrace: true,
+      journeyTrace: [[-37.83036, 144.99455], [-37.8298, 144.9954], [-37.8289, 144.9964]],
+      candidateRouteName: 'Worker-proposed passage',
+    }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ action: 'outcome', stored: true, candidateCapacityId: expect.any(String) })
+  })
+
   it('allows the requesting origin without a wildcard CORS policy', async () => {
     const response = await handler(new Request('https://example.test/api/decision', {
       method: 'POST',
