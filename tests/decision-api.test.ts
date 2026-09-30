@@ -104,4 +104,28 @@ describe('decision API contract', () => {
     expect(response.status).toBe(400)
     expect(await response.json()).toMatchObject({ error: 'Invalid decision request.' })
   })
+
+  it('allows the requesting origin without a wildcard CORS policy', async () => {
+    const response = await handler(new Request('https://example.test/api/decision', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://example.test' },
+      body: JSON.stringify({ action: 'candidate-routes', status: 'candidate' }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://example.test')
+    expect(response.headers.get('vary')).toContain('Origin')
+  })
+
+  it('rejects cross-origin requests before processing their body', async () => {
+    const response = await handler(new Request('https://example.test/api/decision', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://attacker.test' },
+      body: '{not valid JSON',
+    }))
+
+    expect(response.status).toBe(403)
+    expect(response.headers.get('access-control-allow-origin')).toBeNull()
+    expect(await response.json()).toEqual({ error: 'Origin not allowed.' })
+  })
 })

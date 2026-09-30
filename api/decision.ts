@@ -5,25 +5,26 @@ export const config = { runtime: 'nodejs', maxDuration: 30 }
 
 export async function handleDecisionRequest(request: Request) {
   try {
+    if (!originAllowed(request)) return json(request, { error: 'Origin not allowed.' }, 403)
     const { listCandidateRoutes, listWorkspaceIssues, recommend, recordOutcome, reviewCandidateRoute, reviewWorkspaceIssue } = await import('../server/decision-service.js')
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders() })
+      return new Response(null, { status: 204, headers: corsHeaders(request) })
     }
     if (request.method === 'POST') {
       const contentLength = Number(request.headers.get('content-length') || 0)
-      if (contentLength > 64 * 1024) return json({ error: 'Request body is too large.' }, 413)
+      if (contentLength > 64 * 1024) return json(request, { error: 'Request body is too large.' }, 413)
       const rawBody = await request.text()
       if (new TextEncoder().encode(rawBody).byteLength > 64 * 1024) {
-        return json({ error: 'Request body is too large.' }, 413)
+        return json(request, { error: 'Request body is too large.' }, 413)
       }
       let raw: unknown
       try {
         raw = JSON.parse(rawBody)
       } catch {
-        return json({ error: 'Request body must be valid JSON.' }, 400)
+        return json(request, { error: 'Request body must be valid JSON.' }, 400)
       }
       const parsed = validateDecisionRequest(raw)
-      if (!parsed.success) return json({ error: 'Invalid decision request.', issues: parsed.issues }, 400)
+      if (!parsed.success) return json(request, { error: 'Invalid decision request.', issues: parsed.issues }, 400)
       const input = parsed.data
       const response = input.action === 'recommend'
         ? await recommend(input)
@@ -38,14 +39,14 @@ export async function handleDecisionRequest(request: Request) {
                   : input.action === 'workspace-issue-review'
                     ? await reviewWorkspaceIssue(input)
             : null
-      if (!response) return json({ error: 'Unsupported action.' }, 400)
-      return json(response)
+      if (!response) return json(request, { error: 'Unsupported action.' }, 400)
+      return json(request, response)
     }
-    if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405)
+    if (request.method !== 'GET') return json(request, { error: 'Method not allowed.' }, 405)
     return handleLegacyGet(request, { recommend })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown backend error'
-    return json({ error: 'Decision request failed.', detail: message }, 500)
+    return json(request, { error: 'Decision request failed.', detail: message }, 500)
   }
 }
 
@@ -75,7 +76,7 @@ async function handleLegacyGet(request: Request, services: {
   }
   const decision = await services.recommend(recommendationRequest)
   const routeCode = (id: string) => id.endsWith('-a') ? 'A' : id.endsWith('-b') ? 'B' : 'C'
-  return json({
+  return json(request, {
     scenario: context,
     need,
     memoryEnabled,
@@ -106,14 +107,22 @@ function numberParam(url: URL, name: string, fallback: number, min: number, max:
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
 }
 
-function corsHeaders() {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  }
+function originAllowed(request: Request) {
+  const origin = request.headers.get('origin')
+  return !origin || origin === new URL(request.url).origin
 }
 
-function json(value: unknown, status = 200) {
-  return Response.json(value, { status, headers: corsHeaders() })
+function corsHeaders(request: Request) {
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Vary': 'Origin',
+  }
+  const origin = request.headers.get('origin')
+  if (origin && originAllowed(request)) headers['Access-Control-Allow-Origin'] = origin
+  return headers
+}
+
+function json(request: Request, value: unknown, status = 200) {
+  return Response.json(value, { status, headers: corsHeaders(request) })
 }

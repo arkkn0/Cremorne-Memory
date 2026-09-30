@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity, ArrowLeft, ArrowRight, BrainCircuit, Building2, Check,
   CircleGauge, Clock3, FlaskConical, Home, Map as MapIcon,
-  MessageSquare, Navigation, PencilLine, Play, RotateCcw, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
+  MessageSquare, Navigation, PencilLine, Play, RefreshCw, RotateCcw, ShieldAlert, Sparkles, Sun, ThermometerSun, Trees, Users, X,
 } from 'lucide-react'
 import CremorneMap from './CremorneMap'
 import { currentDecisionContext, getCandidateRoutes, getWorkspaceIssues, recommendCapacity, recordGraphOutcome, reviewCandidateRoute, reviewWorkspaceIssue } from './api'
@@ -266,6 +266,15 @@ function JourneyProgress({ stage }: { stage: JourneyStage }) {
   return <div className="journey-progress" aria-label="Journey progress">{['Your need', 'Choose', 'Complete'].map((label, index) => <div key={label} className={current >= index ? 'is-on' : ''}><i>{current > index ? <Check size={11} /> : index + 1}</i><span>{label}</span></div>)}</div>
 }
 
+function RetryNotice({ title, message, onRetry, retrying = false }: {
+  title: string
+  message: string
+  onRetry: () => void
+  retrying?: boolean
+}) {
+  return <div className="honest-gap action-error" role="alert"><ShieldAlert/><div><strong>{title}</strong><span>{message}</span></div><button disabled={retrying} onClick={onRetry}><RefreshCw size={13}/>{retrying ? 'Retrying' : 'Retry'}</button></div>
+}
+
 function TracePreview({ points }: { points: JourneyPoint[] }) {
   const path = useMemo(() => {
     if (points.length < 2) return ''
@@ -297,9 +306,12 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
   const [isFinding, setIsFinding] = useState(false)
   const [clarification, setClarification] = useState<string | null>(null)
+  const [routeError, setRouteError] = useState(false)
   const [journeyTrace, setJourneyTrace] = useState<JourneyPoint[]>([])
   const [feedback, setFeedback] = useState<'better' | 'same' | 'worse' | null>(null)
+  const [outcomeStatus, setOutcomeStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [shareStatus, setShareStatus] = useState<'idle' | 'sharing' | 'shared' | 'kept-private' | 'error'>('idle')
+  const [shareChoice, setShareChoice] = useState(false)
   const [draftMode, setDraftMode] = useState(false)
   const [draftTrace, setDraftTrace] = useState<JourneyPoint[]>([])
   const [draftName, setDraftName] = useState('My suggested route')
@@ -345,9 +357,9 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
     if (watchId.current != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId.current)
   }, [])
 
-  const resetForInput = () => { setStage('setup'); setSelectedId(undefined); setStartedAt(undefined); setElapsedSeconds(0); setDecision(null); setClarification(null); setJourneyTrace([]); setFeedback(null); setShareStatus('idle'); setDraftMode(false); setDraftTrace([]); setDraftStatus('idle') }
+  const resetForInput = () => { setStage('setup'); setSelectedId(undefined); setStartedAt(undefined); setElapsedSeconds(0); setDecision(null); setClarification(null); setRouteError(false); setJourneyTrace([]); setFeedback(null); setOutcomeStatus('idle'); setShareStatus('idle'); setDraftMode(false); setDraftTrace([]); setDraftStatus('idle') }
   const findRoutes = async () => {
-    setIsFinding(true); setClarification(null)
+    setIsFinding(true); setClarification(null); setRouteError(false)
     const instant = localRoutes.find((route) => route.eligible)
     setSelectedId(instant?.id)
     setStage('results')
@@ -363,6 +375,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
       setSelectedId(preferred)
     } catch {
       setDecision(null)
+      setRouteError(true)
     } finally {
       setIsFinding(false)
     }
@@ -400,18 +413,22 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
       candidateRouteName: `Worker-discovered path to ${decision.resolvedDestination?.name ?? parsedBrief.destination}`,
     })
   }
+  const syncOutcome = async (value: 'better' | 'same' | 'worse') => {
+    setOutcomeStatus('saving')
+    try { await persistOutcome(value, false); setOutcomeStatus('saved') }
+    catch { setOutcomeStatus('error') }
+  }
   const recordFeedback = async (value: 'better' | 'same' | 'worse') => {
     setFeedback(value)
     setPersonalOutcomes(saveJourneyOutcome({ routeId: selected.id, routeName: selected.name, completedAt: new Date().toISOString(), elapsedSeconds, predictedMinutes: selected.durationMin, exposureIndex: selected.exposureIndex, feedback: value }))
     setStage('saved')
     const canShareNewPath = value === 'better' && isDistinctJourneyTrace(journeyTrace, selected.coordinates)
-    if (!canShareNewPath) {
-      try { await persistOutcome(value, false) } catch { /* Personal Memory remains available. */ }
-    }
+    if (!canShareNewPath) await syncOutcome(value)
   }
   const canShareNewPath = feedback === 'better' && isDistinctJourneyTrace(journeyTrace, selected.coordinates)
   const chooseTraceSharing = async (shareTrace: boolean) => {
     if (!feedback) return
+    setShareChoice(shareTrace)
     setShareStatus(shareTrace ? 'sharing' : 'kept-private')
     try {
       const response = await persistOutcome(feedback, shareTrace)
@@ -454,7 +471,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
 
         {stage === 'results' && <div className="journey-step">
           <button className="back-action" onClick={() => setStage('setup')}><ArrowLeft size={15} /> Change brief</button><h1>{noEligible ? 'No eligible action yet.' : 'Choose an action.'}</h1><p>{noEligible ? 'A required constraint cannot yet be verified.' : `${routes.filter((route) => route.eligible).length} actions fit your brief`}</p>
-          {isFinding ? <div className="request-status"><Activity/><span><strong>Reading your request</strong><small>Live options are ready while Memory checks comparable outcomes.</small></span></div> : decisionChips.length > 0 ? <div className="brief-understood brief-understood--result"><span>YOUR NEED</span><div>{decisionChips.map((chip) => <b key={chip}>{chip}</b>)}</div></div> : <div className="request-status request-status--offline"><ShieldAlert/><span><strong>Live public-data options shown</strong><small>Memory could not refresh, so no new constraints are claimed.</small></span></div>}
+          {isFinding ? <div className="request-status"><Activity/><span><strong>Reading your request</strong><small>Live options are ready while Memory checks comparable outcomes.</small></span></div> : decisionChips.length > 0 ? <div className="brief-understood brief-understood--result"><span>YOUR NEED</span><div>{decisionChips.map((chip) => <b key={chip}>{chip}</b>)}</div></div> : routeError ? <RetryNotice title="Live matching unavailable" message="Showing public route evidence for now. Retry to include the Capacity Graph and Memory." onRetry={() => void findRoutes()} retrying={isFinding}/> : null}
           {noEligible ? <div className="honest-gap"><ShieldAlert /><div><strong>Required evidence unavailable</strong><span>{routes[0]?.reasons[0]}</span></div></div> : <div className="choice-list">{routes.map((route) => <button key={route.id} disabled={!route.eligible} onClick={() => setSelectedId(route.id)} className={`${selected.id === route.id ? 'is-selected' : ''} ${!route.eligible ? 'is-blocked' : ''}`}><i /><div><span>{route.recommended ? 'BEST FIT' : route.eligible ? 'ALTERNATIVE' : 'NOT ELIGIBLE'}</span><strong>{route.name}</strong><small>{route.eligible ? `${route.durationMin} min walk · ${route.canopyAdjacentPct}% canopy-adjacent` : route.reasons[0]}</small>{selected.id === route.id && route.eligible && <small className="route-why-inline"><Check size={11}/>{route.reasons[0]}</small>}</div>{selected.id === route.id && <Check size={17} />}</button> )}</div>}
           {!noEligible && <div className="journey-actions"><button className="primary-action" onClick={startJourney}>Start guidance <Navigation size={18} /></button><button className="secondary-action route-discovery-action" onClick={() => { setDraftMode(true); setDraftStatus('idle') }}><PencilLine size={16}/><span><strong>Draw a route</strong><small>Share local knowledge</small></span></button></div>}
         </div>}
@@ -473,7 +490,9 @@ function RouteJourney({ weather, memory, workerMode }: { weather: { uvIndex: num
           {shareStatus === 'sharing' && <div className="feedback-saved"><Activity/><span>Adding the path to the Capacity Graph…</span></div>}
           {shareStatus === 'shared' && <div className="candidate-saved"><Check/><span><strong>Candidate path added</strong><small>CDH can compare it before wider guidance.</small></span></div>}
           {shareStatus === 'kept-private' && canShareNewPath && <div className="feedback-saved"><Check/><span>Only your personal outcome was retained.</span></div>}
-          {shareStatus === 'error' && <div className="honest-gap"><ShieldAlert/><div><strong>Path not shared yet</strong><span>Your personal outcome is still saved.</span></div></div>}
+          {!canShareNewPath && outcomeStatus === 'saving' && <div className="feedback-saved"><Activity/><span>Syncing this outcome with Memory…</span></div>}
+          {!canShareNewPath && outcomeStatus === 'error' && feedback && <RetryNotice title="Memory sync failed" message="The outcome remains on this device. Retry when the connection is available." onRetry={() => void syncOutcome(feedback)}/>}
+          {shareStatus === 'error' && <RetryNotice title={shareChoice ? 'Path not shared yet' : 'Private outcome not synced'} message="Your personal outcome remains on this device." onRetry={() => void chooseTraceSharing(shareChoice)}/>}
           {(!canShareNewPath || shareStatus !== 'idle') && shareStatus !== 'sharing' && <button className="primary-action" onClick={resetForInput}>Plan another journey <ArrowRight size={18} /></button>}
         </div>}
       </aside>
@@ -507,6 +526,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
   const [bookingStage, setBookingStage] = useState<'available' | 'booked'>('available')
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState(false)
   const [roomIssue, setRoomIssue] = useState<WorkspaceIssueKey>('temperature')
   const [issueDetail, setIssueDetail] = useState('')
   const [feedbackStatus, setFeedbackStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -552,7 +572,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
   const searchSpaces = async () => {
     const localBrief = parseSpaceBrief(brief)
     const localMatches = findSpaces({ people: localBrief.people, durationMinutes: localBrief.durationMinutes, requireHybrid: localBrief.requireHybrid, requireAccessible: localBrief.requireAccessible, requiredEquipment: localBrief.requiredEquipment, timeLabel: localBrief.timeLabel, scope: 'shared' })
-    setAppliedBrief(brief); setHasSearched(true); setBookingStage('available'); setDecision(null); setIsSearching(true)
+    setAppliedBrief(brief); setHasSearched(true); setBookingStage('available'); setDecision(null); setIsSearching(true); setSearchError(false)
     setSelectedId((localMatches.find((space) => space.eligible) ?? localMatches.find((space) => space.blockers.every((blocker) => /availab|owner/i.test(blocker))) ?? localMatches[0])?.id ?? 'boardroom')
     try {
       const response = await recommendCapacity({
@@ -562,7 +582,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
       })
       setDecision(response)
       setSelectedId(response.recommendation?.productId ?? response.options.find((option) => option.productId === 'boardroom')?.productId ?? response.options[0]?.productId ?? 'boardroom')
-    } catch { setDecision(null) }
+    } catch { setDecision(null); setSearchError(true) }
     finally { setIsSearching(false) }
   }
   const submitRoomFeedback = async () => {
@@ -611,10 +631,10 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
         {workerMode === 'mia' && <span className="step-kicker">MIA’S WORKSPACE NEEDS</span>}
         <h1>What space do you need?</h1>
         <p>{workerMode === 'mia' ? 'Ask for the meeting, time and the sun control Mia actually needs.' : 'Describe the meeting, time and equipment.'}</p>
-        <label className="brief-composer"><span>SPACE BRIEF</span><textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4}/></label>
+        <label className="brief-composer"><span>SPACE BRIEF</span><textarea value={brief} onChange={(event) => { setBrief(event.target.value); setSearchError(false) }} rows={4}/></label>
         <div className="duration-picker"><span>DURATION</span><div>{[30, 45, 60, 90].map((minutes) => <button key={minutes} className={parsedDraft.durationMinutes === minutes ? 'is-active' : ''} onClick={() => setBrief((current) => withSpaceDuration(current, minutes))}>{minutes} min</button>)}</div></div>
         <button className="primary-action space-search-action" disabled={isSearching} onClick={() => void searchSpaces()}>{hasSearched ? 'Update matches' : 'Find rooms'} <ArrowRight size={17}/></button>
-        {hasSearched && (isSearching ? <div className="request-status"><Activity/><span><strong>Reading your request</strong><small>Capability matches are visible while Memory checks past room outcomes.</small></span></div> : decisionChips.length > 0 ? <div className="brief-understood brief-understood--result"><span>YOUR NEED</span><div>{decisionChips.map((chip) => <b key={chip}>{chip}</b>)}</div></div> : <div className="request-status request-status--offline"><ShieldAlert/><span><strong>Public capability matches shown</strong><small>Live Memory and owner availability could not refresh.</small></span></div>)}
+        {hasSearched && (isSearching ? <div className="request-status"><Activity/><span><strong>Reading your request</strong><small>Capability matches are visible while Memory checks past room outcomes.</small></span></div> : decisionChips.length > 0 ? <div className="brief-understood brief-understood--result"><span>YOUR NEED</span><div>{decisionChips.map((chip) => <b key={chip}>{chip}</b>)}</div></div> : searchError ? <RetryNotice title="Live room matching unavailable" message="Showing published capabilities without live Memory. Retry to refresh the match." onRetry={() => void searchSpaces()} retrying={isSearching}/> : null)}
         {hasSearched && <><div className="space-match-count"><strong>{capabilityMatches.length}</strong><span>rooms match the requested capability</span></div><div className="choice-list space-choice-list">{results.map((space) => <button key={space.id} onClick={() => chooseSpace(space.id)} className={selected?.id === space.id ? 'is-selected' : ''}><i/><div><span>{space.recommended ? 'BEST FIT' : space.eligible ? 'AVAILABLE' : space.blockers.every((blocker) => /availab|owner/i.test(blocker)) ? 'CAPABILITY MATCH' : 'MISSING REQUIREMENT'}</span><strong>{space.name.replace('CDH ', '')}</strong><small>{seatsLeft(space)} seats left after your group · {space.facilities.slice(0, 2).join(' · ')}</small></div>{selected?.id === space.id && <Check size={16}/>}</button>)}</div></>}
       </aside>
 
@@ -660,12 +680,14 @@ function OperatorExperience({ weather, onSeeWorker }: {
   const [candidateUnderReview, setCandidateUnderReview] = useState<CandidateRouteRecord | null>(null)
   const [candidateReview, setCandidateReview] = useState({ durationMinutes: '', shadePercent: '', safeCapacity: '', confidence: '0.7', reason: '' })
   const [candidateReviewStatus, setCandidateReviewStatus] = useState<'idle' | 'saving' | 'error'>('idle')
+  const [issuesError, setIssuesError] = useState(false)
+  const [reviewingIssueId, setReviewingIssueId] = useState<string | null>(null)
   const hotspot = productContext.hotspots[0]
   const direct = productContext.routeSets['east-richmond'][0]
   const canopy = productContext.routeSets['east-richmond'][2]
   const refreshIssues = async () => {
-    setLoadingIssues(true)
-    try { setIssues((await getWorkspaceIssues()).issues) } catch { setIssues([]) }
+    setLoadingIssues(true); setIssuesError(false)
+    try { setIssues((await getWorkspaceIssues()).issues) } catch { setIssuesError(true) }
     finally { setLoadingIssues(false) }
   }
   useEffect(() => {
@@ -673,15 +695,19 @@ function OperatorExperience({ weather, onSeeWorker }: {
     Promise.all([getWorkspaceIssues(), getCandidateRoutes()]).then(([issueResponse, routeResponse]) => {
       if (active) { setIssues(issueResponse.issues); setCandidateRoutes(routeResponse.candidates) }
     }).catch(() => {
-      if (active) { setIssues([]); setCandidateRoutes([]) }
+      if (active) setIssuesError(true)
     }).finally(() => {
       if (active) setLoadingIssues(false)
     })
     return () => { active = false }
   }, [])
   const validateIssue = async (issue: WorkspaceIssueRecord) => {
-    await reviewWorkspaceIssue({ issueId: issue.id, decision: 'validate', reason: `CDH confirmed the repeated ${issue.issue} reports.` })
-    await refreshIssues()
+    setReviewingIssueId(issue.id); setIssuesError(false)
+    try {
+      await reviewWorkspaceIssue({ issueId: issue.id, decision: 'validate', reason: `CDH confirmed the repeated ${issue.issue} reports.` })
+      await refreshIssues()
+    } catch { setIssuesError(true) }
+    finally { setReviewingIssueId(null) }
   }
   const openCandidateReview = (candidate: CandidateRouteRecord) => {
     setCandidateUnderReview(candidate)
@@ -729,7 +755,7 @@ function OperatorExperience({ weather, onSeeWorker }: {
           <div className="result-pair"><div><span>DIRECT B</span><strong>{direct.durationMin} min</strong><small>{direct.canopyAdjacentPct}% canopy-adjacent</small></div><div><span>CANOPY C</span><strong>{canopy.durationMin} min</strong><small>{canopy.canopyAdjacentPct}% canopy-adjacent</small></div></div>
           <div className="brief-understood"><span>FIELD OUTCOME</span><div><b>actual journey time</b><b>crossing wait</b><b>direct-sun minutes</b><b>Better / Same / Worse</b></div></div>
           <div className="operator-signal operator-signal--compact"><strong>{issues.filter((issue) => issue.status === 'candidate').length}</strong><span>room issues ready for CDH review</span></div>
-          <div className="operator-issue-list">{loadingIssues ? <small>Loading room evidence…</small> : issues.length === 0 ? <small>No repeated room issue has reached the review threshold.</small> : issues.slice(0, 3).map((issue) => <div key={issue.id}><span><strong>{issue.capacityName}</strong><small>{issue.issue} · {issue.independentReporterCount} independent reports · {issue.status}</small></span>{issue.status === 'candidate' && <button onClick={() => void validateIssue(issue)}>Validate</button>}</div>)}</div>
+          <div className="operator-issue-list">{issuesError ? <RetryNotice title="Room evidence unavailable" message="The current review list could not be loaded or updated." onRetry={() => void refreshIssues()} retrying={loadingIssues}/> : loadingIssues ? <small>Loading room evidence…</small> : issues.length === 0 ? <small>No repeated room issue has reached the review threshold.</small> : issues.slice(0, 3).map((issue) => <div key={issue.id}><span><strong>{issue.capacityName}</strong><small>{issue.issue} · {issue.independentReporterCount} independent reports · {issue.status}</small></span>{issue.status === 'candidate' && <button disabled={reviewingIssueId === issue.id} onClick={() => void validateIssue(issue)}>{reviewingIssueId === issue.id ? 'Validating…' : 'Validate'}</button>}</div>)}</div>
           <div className="operator-signal operator-signal--compact"><strong>{candidateRoutes.filter((route) => route.status === 'candidate').length}</strong><span>worker-proposed routes awaiting review</span></div>
           <div className="operator-issue-list">{loadingIssues ? <small>Loading proposed routes…</small> : candidateRoutes.length === 0 ? <small>No proposed route is waiting for review.</small> : candidateRoutes.slice(0, 2).map((candidate) => <div key={candidate.id}><span><strong>{candidate.name}</strong><small>{candidate.geometry.length} points · {candidate.status}</small></span>{candidate.status === 'candidate' && <button onClick={() => openCandidateReview(candidate)}>Review</button>}</div>)}</div>
           <button className="primary-action" onClick={onSeeWorker}>Open the worker journey <ArrowRight size={18}/></button>
