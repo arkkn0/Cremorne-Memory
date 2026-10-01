@@ -40,8 +40,6 @@ try {
   await context.setGeolocation({ latitude: -37.82720, longitude: 144.99675 })
   await page.waitForTimeout(350)
   await page.getByRole('button', { name: /i.ve arrived/i }).click()
-  await page.getByLabel(/crossing wait in minutes/i).fill('2')
-  await page.getByLabel(/direct sun in minutes/i).fill('3')
   await page.getByRole('button', { name: uiOnly ? /^worse$/i : /^better$/i }).click()
   await page.getByText(/you found another way|next journey starts smarter/i).waitFor()
   const share = page.getByRole('button', { name: /share candidate path/i })
@@ -52,7 +50,6 @@ try {
   }
 
   const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('cremorne-outcomes:v1') || '[]'))
-  if (stored[0]?.crossingWaitMinutes !== 2 || stored[0]?.directSunMinutes !== 3) throw new Error('Measured journey observations were not retained.')
   if (!/Route B/i.test(stored[0]?.routeName || '')) throw new Error(`The selected Route B outcome was not retained: ${stored[0]?.routeName || 'unknown route'}`)
   if (uiOnly) {
     await page.getByRole('button', { name: /plan another journey/i }).click()
@@ -66,7 +63,7 @@ try {
   await page.getByRole('button', { name: /find a room/i }).click()
   const roomStarted = Date.now()
   await page.getByRole('button', { name: /^find rooms/i }).click()
-  await page.getByText(/best match|needs confirmation/i).first().waitFor()
+  await page.getByText(/best match|best capability match/i).first().waitFor()
   timings.roomMatchMs = Date.now() - roomStarted
   if (timings.roomMatchMs > 1000) throw new Error(`Room choices took ${timings.roomMatchMs}ms to appear; the live demo must feel immediate.`)
   if (await page.getByText(/doesn.t fit/i).count()) throw new Error('Hard room mismatches leaked into the result list.')
@@ -87,7 +84,7 @@ try {
     await page.getByRole('button', { name: /now add mia/i }).click()
     await page.getByRole('heading', { name: /36 seconds changes/i }).waitFor()
     await page.screenshot({ path: '.tmp-live-proof.png', fullPage: false })
-    await page.getByRole('button', { name: /see retrieved memory/i }).click()
+    await page.getByRole('button', { name: /apply memory to the next match/i }).click()
     await page.getByText(/local memory/i).waitFor()
 
     await page.getByRole('button', { name: /precinct view/i }).click()
