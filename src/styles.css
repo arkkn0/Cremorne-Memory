@@ -1145,6 +1145,99 @@ img, svg { display: block; max-width: 100%; }
 .comment-status.is-saved { color: #155d4e; }.comment-status.is-error { color: #9b4934; }
 .owner-availability-gap a { width: max-content; display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; color: #7a3d2e; font-size: 8px; font-weight: 900; text-decoration: underline; text-underline-offset: 2px; }
 
+/* Finals stage readability — prioritise the decision, the reason and the action. */
+@media (min-width: 1000px) {
+  .product-clear__header .brand { font-size: 17px; }
+  .role-switch button { min-height: 40px; padding-inline: 18px; font-size: 12px; }
+  .product-status > span, .product-status > a, .product-status > button { min-height: 38px; padding-inline: 12px; font-size: 11px; }
+  .task-switcher { width: min(500px,100%); height: 56px; margin-bottom: 10px; }
+  .task-switcher > div:first-child button { min-height: 44px; font-size: 13px; }
+
+  .route-experience { grid-template-columns: 420px minmax(0,1fr); }
+  .journey-panel { padding: 26px 25px; }
+  .journey-panel, .space-search, .space-confirm { scrollbar-width: none; }
+  .journey-panel::-webkit-scrollbar, .space-search::-webkit-scrollbar, .space-confirm::-webkit-scrollbar { width: 0; height: 0; }
+  .step-kicker { font-size: 10px; }
+  .journey-step h1, .space-search h1 { margin-block: 5px 6px; font-size: 34px; }
+  .journey-step > p, .space-search > p { font-size: 13px; }
+  .brief-composer > span, .brief-understood > span { font-size: 10px; }
+  .brief-composer textarea { padding: 14px 15px; font-size: 13px; }
+  .brief-understood { padding: 11px; }
+  .brief-understood--result { margin-block: 8px 10px; }
+  .brief-understood b { padding: 6px 9px; font-size: 10px; }
+  .primary-action, .secondary-action { font-size: 13px; }
+  .choice-list > button { min-height: 68px; padding: 9px 12px; }
+  .choice-list > button span { font-size: 10px; }
+  .choice-list > button strong { font-size: 17px; }
+  .choice-list > button small { font-size: 12px; }
+  .route-why-inline { font-size: 11px !important; }
+  .more-route-action { min-height: 36px; font-size: 11px; }
+  .route-discovery-action strong { font-size: 13px; }
+  .route-discovery-action small { font-size: 10px; }
+  .journey-actions .primary-action, .journey-actions .secondary-action { min-height: 48px; }
+  .back-action { font-size: 11px; }
+
+  .map-context { right: 354px; max-width: calc(100% - 382px); min-height: 40px; }
+  .map-context span, .map-active-banner { min-height: 32px; font-size: 11px; }
+  .route-summary-panel { width: 330px; gap: 12px; padding: 21px; }
+  .route-summary-panel h2 { font-size: 29px; }
+  .route-summary-metrics div { padding: 11px 6px; }
+  .route-summary-metrics strong { font-size: 17px; }
+  .route-summary-metrics span { font-size: 9px; }
+  .route-tradeoff strong { font-size: 13px; }
+  .route-tradeoff span { font-size: 11px; }
+  .route-summary-panel p { font-size: 11px; }
+  .route-summary-panel p strong { font-size: 10px; }
+  .route-memory-note { font-size: 10px; }
+
+  .journey-tracking-card span, .live-expectation small, .next-turn span, .captured-path small, .measurement-note strong { font-size: 10px; }
+  .journey-tracking-card strong, .live-expectation strong, .next-turn strong, .captured-path strong { font-size: 13px; }
+  .journey-tracking-card small, .next-turn small, .measurement-note small { font-size: 11px; }
+  .arrival-metrics span, .feedback-question { font-size: 11px; }
+  .feedback-row button { font-size: 12px; }
+  .feedback-saved { font-size: 12px; }
+  .share-path-card > div strong { font-size: 14px; }
+  .share-path-card > div span, .candidate-saved small { font-size: 11px; }
+  .candidate-saved strong { font-size: 13px; }
+
+  .space-experience { grid-template-columns: 330px minmax(430px,1fr) 390px; }
+  .space-search, .space-confirm { padding: 24px; }
+  .space-search > label strong { font-size: 14px; }
+  .duration-picker > span { font-size: 10px; }
+  .duration-picker button { min-height: 36px; font-size: 10px; }
+  .space-match-count span { font-size: 11px; }
+  .capacity-address small { font-size: 9px; }
+  .capacity-address strong { font-size: 12px; }
+  .capacity-address b { font-size: 10px; }
+  .room-shape > small { font-size: 10px; }
+  .room-shape strong { font-size: 17px; }
+  .room-shape em, .room-shape span { font-size: 11px; }
+  .floor-corridor { font-size: 11px; }
+  .room-shape.is-selected { border-color: #1d7f69; box-shadow: 0 0 0 6px rgba(29,127,105,.12), 0 14px 34px rgba(31,38,32,.1); }
+  .room-shape.is-selected > small { color: #1d7f69; }
+  .room-shape.is-selected span { background: #1d7f69; }
+
+  .space-confirm h2 { margin-bottom: 13px; font-size: 32px; }
+  .space-access-class { margin-bottom: 16px; font-size: 10px; }
+  .capacity-number strong { font-size: 56px; }
+  .capacity-number span { font-size: 11px; }
+  .room-fit-summary { margin: 14px 0; padding: 13px; }
+  .room-fit-summary > strong { font-size: 11px; }
+  .room-fit-summary > span { padding: 6px 8px; font-size: 10px; }
+  .honest-gap strong { font-size: 12px; }
+  .honest-gap span, .owner-availability-gap a { font-size: 10px; }
+  .room-comments { gap: 10px; margin-top: 14px; padding-top: 14px; }
+  .room-comments__heading strong { font-size: 14px; }
+  .room-comments__heading small { font-size: 10px; }
+  .room-comments article { padding: 10px 11px; }
+  .room-comments article b { font-size: 10px; }
+  .room-comments article span { font-size: 11px; }
+  .room-comments .issue-grid button { min-height: 36px; font-size: 10px; }
+  .room-comments textarea { font-size: 11px; }
+  .room-comments .room-report-action { min-height: 44px; font-size: 11px; }
+  .comment-status { font-size: 10px; }
+}
+
 .demo-visual .cremorne-map, .operator-scene .cremorne-map { width: 100%; height: 100%; min-height: 500px; }
 .demo-visual .leaflet-tile-pane, .operator-scene .leaflet-tile-pane { filter: grayscale(.7) saturate(.6) brightness(1.05); }
 .demo-live-source { position: absolute; z-index: 850; left: 16px; bottom: 18px; display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 10px; color: #1d7f69; background: rgba(255,255,255,.94); box-shadow: 0 8px 24px rgba(31,38,32,.12); }
