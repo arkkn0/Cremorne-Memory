@@ -12,10 +12,13 @@
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
     "qr": "node ./scripts/generate-qr.mjs",
     "data:build": "node ./scripts/build-cremorne-data.mjs",
+    "twin:build": "node ./scripts/build-cremorne-twin.mjs",
     "graph:seed": "node --import tsx ./scripts/seed-neo4j.ts",
     "graph:verify-candidate": "node --import tsx ./scripts/verify-candidate-route-flow.ts"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.4.0",
+    "@deck.gl/layers": "^9.4.0",
     "@types/node": "26.6.3",
     "@vitejs/plugin-react": "latest",
     "leaflet": "^1.9.4",

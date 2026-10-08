@@ -132,7 +132,6 @@ function fallbackParse(text: string): StructuredDemand {
     if (/projector/.test(lower)) equipment.push('AV')
     if (/whiteboard/.test(lower)) equipment.push('Whiteboard')
     if (/adjustable blinds|sun control|avoid direct sun/.test(lower)) equipment.push('Adjustable blinds')
-    if (/low[- ]?glare|avoid glare|glare sensitive/.test(lower)) equipment.push('Low-glare lighting')
     const durationMatch = lower.match(/(?:for\s*)?(\d{1,3})\s*(?:min|minute)/)
     const durationHours = lower.match(/(?:for\s*)?(\d+(?:\.\d+)?)\s*(?:hour|hr)/)
     const durationMinutes = durationMatch ? Number(durationMatch[1]) : durationHours ? Number(durationHours[1]) * 60 : 60
@@ -147,7 +146,7 @@ function fallbackParse(text: string): StructuredDemand {
         hybridEquipment: requireHybrid,
         equipment,
       },
-      preferences: { crowding: 'standard', uv: /glare|sun|low[- ]?uv/.test(lower) ? 'lower' : 'standard' },
+      preferences: { crowding: 'standard', uv: /sun|low[- ]?uv/.test(lower) ? 'lower' : 'standard' },
       requirementStrength: /prefer|if possible|ideally/.test(lower) ? 'preferred' : 'required',
       requesterOrganisation: null, confidence: 0.74, unresolvedFields: [],
     }
@@ -157,7 +156,7 @@ function fallbackParse(text: string): StructuredDemand {
   const deadline = extractTime(text, '16:20')
   const flexibilityMatch = lower.match(/(?:up to|within|wait|flexible(?: by)?)\s*(\d{1,2})\s*(?:min|minute)/)
   const flexibility = clamp(Number(flexibilityMatch?.[1] ?? 0), 0, 60)
-  const lowUv = /avoid (direct )?sun|minimal direct sun|minimi[sz]e (direct )?(sun|uv)|low[- ]?uv|photosens|albin|glare/.test(lower)
+  const lowUv = /avoid (direct )?sun|minimal direct sun|minimi[sz]e (direct )?(sun|uv)|low[- ]?uv|photosens|albin/.test(lower)
   const stepFree = /step[- ]?free|wheelchair|mobility/.test(lower)
   const lowerCrowding = /less crowded|lower crowd|quiet route|avoid crowd/.test(lower)
   return {
@@ -212,7 +211,6 @@ function normaliseEquipment(value: string) {
   if (/screen|monitor|display/.test(text)) return 'Display'
   if (/whiteboard/.test(text)) return 'Whiteboard'
   if (/blind|sun control/.test(text)) return 'Adjustable blinds'
-  if (/glare/.test(text)) return 'Low-glare lighting'
   if (/projector|\bav\b/.test(text)) return 'AV'
   return value.trim()
 }

@@ -17,6 +17,37 @@ import type {
   WorkspaceIssuesRequest,
   WorkspaceIssuesResponse,
 } from './api-contracts'
+import type { CdhOperationsModel } from './cdh-operations'
+
+export interface SystemServiceStatus {
+  id: string
+  label: string
+  status: 'ready' | 'resilient' | 'connect-next' | 'pilot-ready'
+  detail: string
+}
+
+export interface SystemStatus {
+  product: string
+  status: 'ready'
+  decisionFlow: string
+  graph: 'neo4j' | 'in-memory-fallback'
+  nlu: 'llm' | 'fallback-parser'
+  evidence: string
+  checkedAt: string
+  services: SystemServiceStatus[]
+}
+
+export async function getSystemStatus(): Promise<SystemStatus> {
+  const response = await fetch('/api/health', { headers: { accept: 'application/json' } })
+  if (!response.ok) throw new Error(`Health API returned ${response.status}`)
+  return response.json() as Promise<SystemStatus>
+}
+
+export async function getOperationsModel(): Promise<CdhOperationsModel> {
+  const response = await fetch('/api/operations', { headers: { accept: 'application/json' } })
+  if (!response.ok) throw new Error(`Operations API returned ${response.status}`)
+  return response.json() as Promise<CdhOperationsModel>
+}
 
 async function decisionRequest<T>(request: RecommendRequest | OutcomeRequest | CandidateRoutesRequest | CandidateRouteReviewRequest | WorkspaceIssuesRequest | WorkspaceIssueReviewRequest | RouteExceptionsRequest | RouteExceptionReviewRequest): Promise<T> {
   const controller = new AbortController()

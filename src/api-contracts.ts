@@ -54,6 +54,48 @@ export interface RetrievedMemory {
   scope?: 'personal' | 'cohort' | 'precinct'
 }
 
+export type DecisionCheckStatus = 'pass' | 'fail' | 'not-requested' | 'unknown'
+
+export interface DecisionEligibilityCheck {
+  id: string
+  label: string
+  status: DecisionCheckStatus
+  detail: string
+}
+
+export interface DecisionScoreComponent {
+  id: string
+  label: string
+  value: number
+  direction: 'penalty' | 'credit'
+  detail: string
+}
+
+export type DecisionSourceStatus = 'live' | 'loaded' | 'observed' | 'awaiting-access' | 'fallback'
+
+export interface DecisionSource {
+  id: string
+  label: string
+  status: DecisionSourceStatus
+  detail: string
+  observedAt?: string
+}
+
+export interface DecisionTraceStage {
+  id: 'understand' | 'context' | 'retrieve' | 'eligible' | 'rank' | 'memory'
+  label: string
+  status: 'complete' | 'waiting'
+  detail: string
+}
+
+export interface DecisionTrace {
+  stages: DecisionTraceStage[]
+  sources: DecisionSource[]
+  consideredOptions: number
+  eligibleOptions: number
+  appliedMemoryIds: string[]
+}
+
 export type CandidateRouteStatus = 'candidate' | 'under-validation' | 'validated' | 'rejected'
 export type WorkspaceIssueKey = 'temperature' | 'equipment' | 'blinds' | 'acoustics' | 'accessibility' | 'other'
 export type WorkspaceIssueStatus = 'collecting' | 'candidate' | 'validated' | 'rejected'
@@ -153,6 +195,8 @@ export interface RankedCapacityOption {
   availableFrom?: string
   availableUntil?: string
   memory: RetrievedMemory[]
+  eligibilityChecks: DecisionEligibilityCheck[]
+  scoreBreakdown: DecisionScoreComponent[]
 }
 
 export interface RecommendRequest {
@@ -175,6 +219,7 @@ export interface RecommendResponse {
   explanation: string
   retrievedMemory: RetrievedMemory[]
   decisionId: string
+  trace: DecisionTrace
 }
 
 export interface OutcomeRequest {

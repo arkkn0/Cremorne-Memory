@@ -17,6 +17,7 @@
     "api/**/*.ts",
     "server/**/*.ts",
     "src/api-contracts.ts",
+    "src/cdh-operations.ts",
     "src/domain.ts",
     "src/cremorne-context.json"
   ]

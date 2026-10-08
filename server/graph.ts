@@ -5,37 +5,10 @@ import type {
 } from '../src/api-contracts.js'
 import type { GraphCapacityUnit, GraphNeighbourhood, GraphOutcomeWrite, GraphPlace, GraphRepository, PlaceResolution } from './graph-types.js'
 import { DEFAULT_CAPACITY_UNITS, DEFAULT_PLACES } from './default-graph.js'
+import { routeExceptionId, workspaceIssueId, workspaceIssueRequirement, workspaceIssueSummary } from './evidence.js'
+import { CREMORNE_OPERATING_POLICY } from './operating-policy.js'
 
-const workspaceIssueThreshold = () => Math.max(2, Number(process.env.CREMORNE_ROOM_ISSUE_THRESHOLD || 3))
-const routeExceptionThreshold = () => Math.max(2, Number(process.env.CREMORNE_ROUTE_EXCEPTION_THRESHOLD || 3))
-
-function routeExceptionId(capacityUnitId: string, requirement: string) {
-  return `route-exception-${normalise(capacityUnitId).replace(/ /g, '-')}-${normalise(requirement).replace(/ /g, '-')}`
-}
-
-function workspaceIssueRequirement(issue: WorkspaceIssueInput) {
-  if (issue.issue === 'temperature') return 'thermal-comfort'
-  if (issue.issue === 'blinds') return 'adjustable-blinds'
-  if (issue.issue === 'acoustics') return 'hybrid'
-  if (issue.issue === 'accessibility') return 'mobility'
-  if (issue.issue === 'equipment') return issue.facility ? `equipment:${normalise(issue.facility).replace(/ /g, '-')}` : 'equipment'
-  return 'standard'
-}
-
-function workspaceIssueSummary(issue: WorkspaceIssueInput) {
-  const subject = issue.issue === 'temperature' ? 'temperature or air-conditioning'
-    : issue.issue === 'equipment' ? `${issue.facility || 'room equipment'}`
-      : issue.issue === 'blinds' ? 'sun-control blinds'
-        : issue.issue === 'acoustics' ? 'room acoustics'
-          : issue.issue === 'accessibility' ? 'accessibility'
-            : 'room experience'
-  return `A previous visit reported an issue with ${subject}${issue.detail ? `: ${issue.detail}` : '.'}`
-}
-
-function workspaceIssueId(capacityUnitId: string, issue: WorkspaceIssueInput) {
-  const discriminator = issue.facility ? `-${normalise(issue.facility).replace(/ /g, '-')}` : ''
-  return `workspace-issue-${normalise(capacityUnitId).replace(/ /g, '-')}-${issue.issue}${discriminator}`
-}
+const evidencePolicy = CREMORNE_OPERATING_POLICY.evidence
 
 const normalise = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
@@ -72,7 +45,7 @@ function resolveAgainstPlaces(raw: string, places: GraphPlace[]): PlaceResolutio
 
 function relevantRequirementKeys(demand: StructuredDemand) {
   const keys: string[] = []
-  if (demand.requirements.lowUv || demand.preferences.uv === 'lower') keys.push('low-uv', 'low-glare')
+  if (demand.requirements.lowUv || demand.preferences.uv === 'lower') keys.push('low-uv')
   if (demand.requirements.stepFree || demand.requirements.accessible) keys.push('mobility')
   if (demand.requirements.hybridEquipment) keys.push('hybrid')
   demand.requirements.equipment.forEach((equipment) => {
@@ -87,7 +60,7 @@ function relevantRequirementKeys(demand: StructuredDemand) {
 function primaryRequirement(demand: StructuredDemand) {
   return demand.requirements.lowUv ? 'low-uv'
     : demand.requirements.stepFree || demand.requirements.accessible ? 'mobility'
-      : demand.intent === 'workspace' && demand.preferences.uv === 'lower' ? 'low-glare'
+      : demand.intent === 'workspace' && demand.preferences.uv === 'lower' ? 'adjustable-blinds'
         : 'standard'
 }
 
@@ -202,7 +175,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
       memoryIds.push(input.candidateRule.id)
     }
     let candidateCapacityId: string | undefined
-    if (input.shareTrace && (input.feedback === 'better' || !input.feedback) && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= 3) {
+    if (input.shareTrace && (input.feedback === 'better' || !input.feedback) && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= evidencePolicy.minimumCandidateTracePoints) {
       candidateCapacityId = `candidate-route-${input.id}`
       const source = this.capacities.find((capacity) => capacity.id === input.capacityUnitId)
       if (!source) throw new Error(`Source capacity ${input.capacityUnitId} was not found.`)
@@ -294,7 +267,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
         capacityName: capacity?.name || group.capacityUnitId,
         issue: group.issue.issue,
         requirement: workspaceIssueRequirement(group.issue),
-        status: review?.status ?? (reporterIds.size >= workspaceIssueThreshold() ? 'candidate' : 'collecting'),
+        status: review?.status ?? (reporterIds.size >= evidencePolicy.independentReportersForRoomIssue ? 'candidate' : 'collecting'),
         reportCount: group.reports.length,
         independentReporterCount: reporterIds.size,
         firstReportedAt: timestamps[0] || '',
@@ -333,7 +306,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
   async listRouteExceptions(status?: RouteExceptionStatus) {
     const grouped = new Map<string, { capacityUnitId: string; requirement: string; reports: GraphOutcomeWrite[] }>()
     this.outcomes
-      .filter((outcome) => outcome.demand.intent === 'movement' && outcome.feedback === 'worse' && outcome.context.uvIndex >= 3)
+      .filter((outcome) => outcome.demand.intent === 'movement' && outcome.feedback === 'worse' && outcome.context.uvIndex >= evidencePolicy.minimumUvForLowUvBoundary)
       .forEach((outcome) => {
         const requirement = primaryRequirement(outcome.demand)
         if (requirement !== 'low-uv') return
@@ -352,7 +325,7 @@ export class InMemoryCapacityGraph implements GraphRepository {
         capacityUnitId: group.capacityUnitId,
         capacityName: capacity?.name || group.capacityUnitId,
         requirement: group.requirement,
-        status: review?.status ?? (reporterIds.size >= routeExceptionThreshold() ? 'candidate' : 'collecting'),
+        status: review?.status ?? (reporterIds.size >= evidencePolicy.independentReportersForRouteBoundary ? 'candidate' : 'collecting'),
         reportCount: group.reports.length,
         independentReporterCount: reporterIds.size,
         uvMin: Math.min(...group.reports.map((report) => report.context.uvIndex)),
@@ -511,7 +484,6 @@ export class Neo4jCapacityGraph implements GraphRepository {
       SET r.name = row.name
     `, { requirements: [
       { key: 'low-uv', name: 'Low UV exposure' },
-      { key: 'low-glare', name: 'Low glare' },
       { key: 'mobility', name: 'Step-free mobility' },
       { key: 'hybrid', name: 'Hybrid meeting equipment' },
       { key: 'thermal-comfort', name: 'Thermal comfort' },
@@ -521,10 +493,6 @@ export class Neo4jCapacityGraph implements GraphRepository {
       { key: 'standard', name: 'Standard journey' },
     ] })
 
-    await this.run(`
-      OPTIONAL MATCH (evidence:Evidence {id: 'synthetic-route-b-seed-42'})
-      DETACH DELETE evidence
-    `)
     await this.run(`
       OPTIONAL MATCH (rule:OperatingRule {id: 'church-st-high-uv-route-b'})
       OPTIONAL MATCH (rule)-[:HAS_EXCEPTION]->(exception:Exception {id: 'route-b-low-uv'})
@@ -692,7 +660,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
       await this.run(`
         MATCH (capacity:CapacityUnit {id: $capacityUnitId})-[:HAS_OUTCOME]->(outcome:Outcome)-[:FOR_REQUIREMENT]->(:Requirement {key: $requirement})
         MATCH (outcome)-[:UNDER_CONTEXT]->(context:Context)
-      WHERE outcome.feedback = 'worse' AND context.uvIndex >= 3
+      WHERE outcome.feedback = 'worse' AND context.uvIndex >= $minimumUv
         WITH capacity,
              count(outcome) AS reportCount,
              count(DISTINCT CASE WHEN coalesce(outcome.profileId, '') = '' THEN outcome.id ELSE outcome.profileId END) AS reporterCount,
@@ -716,7 +684,8 @@ export class Neo4jCapacityGraph implements GraphRepository {
       `, {
         capacityUnitId: input.capacityUnitId,
         requirement,
-        threshold: routeExceptionThreshold(),
+        threshold: evidencePolicy.independentReportersForRouteBoundary,
+        minimumUv: evidencePolicy.minimumUvForLowUvBoundary,
         candidateId: routeExceptionId(input.capacityUnitId, requirement),
       })
     }
@@ -783,7 +752,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
           capacityUnitId: input.capacityUnitId,
           issue: issue.issue,
           facility: issue.facility,
-          threshold: workspaceIssueThreshold(),
+          threshold: evidencePolicy.independentReportersForRoomIssue,
           candidateId: workspaceIssueId(input.capacityUnitId, issue),
         })
       }
@@ -821,7 +790,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
       memoryIds.push(rule.id)
     }
     let candidateCapacityId: string | undefined
-    if (input.shareTrace && (input.feedback === 'better' || !input.feedback) && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= 3) {
+    if (input.shareTrace && (input.feedback === 'better' || !input.feedback) && input.demand.intent === 'movement' && (input.journeyTrace?.length ?? 0) >= evidencePolicy.minimumCandidateTracePoints) {
       candidateCapacityId = `candidate-route-${input.id}`
       await this.run(`
         MATCH (source:CapacityUnit {id: $sourceCapacityUnitId})-[:LOCATED_AT]->(place:Place)
@@ -966,7 +935,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
              details, issueId, resolvedStatus,
              candidate.reviewedAt AS reviewedAt, candidate.reviewReason AS reviewReason
       ORDER BY reporterCount DESC, lastReportedAt DESC
-    `, { threshold: workspaceIssueThreshold(), status: status || '' })
+    `, { threshold: evidencePolicy.independentReportersForRoomIssue, status: status || '' })
     return result.records.map((record) => ({
       id: String(record.get('issueId')),
       capacityUnitId: String(record.get('capacityUnitId')),
@@ -1024,7 +993,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
     const result = await this.run(`
       MATCH (capacity:CapacityUnit)-[:HAS_OUTCOME]->(outcome:Outcome)-[:FOR_REQUIREMENT]->(requirement:Requirement {key: 'low-uv'})
       MATCH (outcome)-[:UNDER_CONTEXT]->(context:Context)
-      WHERE capacity.kind = 'movement' AND outcome.feedback = 'worse' AND context.uvIndex >= 3
+      WHERE capacity.kind = 'movement' AND outcome.feedback = 'worse' AND context.uvIndex >= $minimumUv
       WITH capacity, requirement,
            count(outcome) AS reportCount,
            count(DISTINCT CASE WHEN coalesce(outcome.profileId, '') = '' THEN outcome.id ELSE outcome.profileId END) AS reporterCount,
@@ -1046,7 +1015,7 @@ export class Neo4jCapacityGraph implements GraphRepository {
              reportCount, reporterCount, firstReportedAt, lastReportedAt, uvMin, crowdingMin,
              exceptionId, resolvedStatus, candidate.reviewedAt AS reviewedAt, candidate.reviewReason AS reviewReason
       ORDER BY reporterCount DESC, lastReportedAt DESC
-    `, { threshold: routeExceptionThreshold(), status: status || '' })
+    `, { threshold: evidencePolicy.independentReportersForRouteBoundary, minimumUv: evidencePolicy.minimumUvForLowUvBoundary, status: status || '' })
     return result.records.map((record) => ({
       id: String(record.get('exceptionId')),
       capacityUnitId: String(record.get('capacityUnitId')),

@@ -122,7 +122,7 @@ export function parseRouteBrief(brief: string): ParsedRouteBrief {
   const destination: DestinationId = text.includes('east richmond') ? 'east-richmond' : 'richmond'
   const need: ProductNeed = /step[- ]?free|wheelchair|mobility/.test(text)
     ? 'step-free'
-    : /avoid (direct )?sun|minimal (direct )?sun|low[- ]?uv|minimi[sz]e (direct )?(sun|uv)|photosens|albin|glare/.test(text)
+    : /avoid (direct )?sun|minimal (direct )?sun|low[- ]?uv|minimi[sz]e (direct )?(sun|uv)|photosens|albin/.test(text)
       ? 'lower-uv'
       : /less crowded|lower crowd|quiet route|avoid crowd/.test(text)
         ? 'lower-crowding'
@@ -162,7 +162,6 @@ export function parseSpaceBrief(brief: string): ParsedSpaceBrief {
   if (/whiteboard/.test(text)) requiredEquipment.push('Whiteboard')
   if (/flexible (?:seating|layout)|workshop layout/.test(text)) requiredEquipment.push('Flexible seating')
   if (/adjustable blinds|sun control|avoid direct sun/.test(text)) requiredEquipment.push('Adjustable blinds')
-  if (/low[- ]?glare|avoid glare|glare sensitive/.test(text)) requiredEquipment.push('Low-glare lighting')
   const timeLabel = timeMatch ? normaliseClock(Number(timeMatch[1]), Number(timeMatch[2] ?? 0), timeMatch[3]) : '14:00'
   const chips = [`${people} people`, `${timeLabel} · ${durationMinutes} min`]
   if (requireHybrid) chips.push('Hybrid equipped')

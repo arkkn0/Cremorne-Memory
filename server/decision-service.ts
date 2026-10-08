@@ -19,21 +19,61 @@ export async function recommend(
   const { demand: parsedDemand, source } = await parseDemand(request.brief || request.demand?.originalText || '', request.demand)
   const { graph, demand, resolution } = await resolveGraph(repository, parsedDemand)
   if (demand.intent === 'movement' && !resolution?.place) {
+    const decisionId = randomUUID()
     return {
       action: 'recommend', demand, parser: source, graph: graph.backend,
       resolvedDestination: null, clarification: resolution?.clarification || 'Please add a destination.',
-      options: [], recommendation: null, explanation: '', retrievedMemory: [], decisionId: randomUUID(),
+      options: [], recommendation: null, explanation: '', retrievedMemory: [], decisionId,
+      trace: buildDecisionTrace({ request, demand, parser: source, graph: graph.backend, options: [], memories: [] }),
     }
   }
   const neighbourhood = await graph.retrieve(demand, request.context, request.useMemory !== false)
   const ranked = rankCapacity(demand, request.context, neighbourhood)
   const explained = await explainOptions(demand, request.context, ranked)
   const recommendation = explained.options.find((option) => option.recommended) ?? null
+  const decisionId = randomUUID()
   return {
     action: 'recommend', demand, parser: source, graph: neighbourhood.backend,
     resolvedDestination: resolution?.place ? { id: resolution.place.id, name: resolution.place.name } : null,
     clarification: null, options: explained.options, recommendation,
-    explanation: explained.overall, retrievedMemory: neighbourhood.memories, decisionId: randomUUID(),
+    explanation: explained.overall, retrievedMemory: neighbourhood.memories, decisionId,
+    trace: buildDecisionTrace({ request, demand, parser: source, graph: neighbourhood.backend, options: explained.options, memories: neighbourhood.memories }),
+  }
+}
+
+function buildDecisionTrace({ request, demand, parser, graph, options, memories }: {
+  request: RecommendRequest
+  demand: StructuredDemand
+  parser: RecommendResponse['parser']
+  graph: RecommendResponse['graph']
+  options: RecommendResponse['options']
+  memories: RecommendResponse['retrievedMemory']
+}): RecommendResponse['trace'] {
+  const eligible = options.filter((option) => option.eligible)
+  const top = eligible.find((option) => option.recommended)
+  const timeLabel = demand.intent === 'movement'
+    ? demand.arrivalDeadline ? `arrival by ${demand.arrivalDeadline}` : 'requested journey time'
+    : `${demand.startTime || '14:00'} for ${demand.durationMinutes} minutes`
+  return {
+    consideredOptions: options.length,
+    eligibleOptions: eligible.length,
+    appliedMemoryIds: memories.filter((memory) => memory.applies).map((memory) => memory.id),
+    stages: [
+      { id: 'understand', label: 'Understand', status: 'complete', detail: parser === 'llm' ? 'OpenAI returned a structured need.' : parser === 'structured' ? 'The app supplied a structured need.' : 'Local parsing produced a structured need.' },
+      { id: 'context', label: 'Predict context', status: 'complete', detail: `Matched against ${timeLabel}, UV ${request.context.uvIndex.toFixed(1)} and demand ${request.context.workers}.` },
+      { id: 'retrieve', label: 'Retrieve capacity', status: 'complete', detail: `${graph === 'neo4j' ? 'Neo4j' : 'Capacity Graph'} returned ${options.length} ${demand.intent === 'movement' ? 'route' : 'room'} candidates.` },
+      { id: 'eligible', label: 'Apply requirements', status: 'complete', detail: `${eligible.length} of ${options.length} options meet every required condition.` },
+      { id: 'rank', label: 'Rank options', status: top ? 'complete' : 'waiting', detail: top ? `${top.name} leads the current eligible set.` : 'The request calls for a new capacity option.' },
+      { id: 'memory', label: 'Apply Memory', status: 'complete', detail: memories.length ? `${memories.length} relevant local outcome${memories.length === 1 ? '' : 's'} applied.` : 'The public baseline leads; the first field outcome builds local Memory.' },
+    ],
+    sources: [
+      { id: 'weather', label: 'Open-Meteo context', status: request.context.uvIndex > 0 ? 'live' : 'fallback', detail: request.context.uvIndex > 0 ? `UV ${request.context.uvIndex.toFixed(1)} at time of use` : 'Route geometry leads until the forecast refreshes', observedAt: request.context.requestedAt },
+      { id: 'demand', label: 'DTP station profile', status: 'loaded', detail: `${request.context.workers} expected workers in the requested time band` },
+      { id: 'geometry', label: demand.intent === 'movement' ? 'OSM + Vicmap route evidence' : 'CDH venue capabilities', status: 'loaded', detail: demand.intent === 'movement' ? 'Pedestrian geometry and canopy adjacency available' : 'Room capacity, facilities and access class available' },
+      { id: 'graph', label: 'Capacity Graph', status: graph === 'neo4j' ? 'live' : 'fallback', detail: graph === 'neo4j' ? 'Neo4j query and Memory retrieval completed' : 'Local graph runtime completed the decision' },
+      { id: 'smart-pole', label: 'Cremorne smart-pole feed', status: 'awaiting-access', detail: 'Connect next: Yarra/CDH data activates movement calibration' },
+      { id: 'owner', label: 'Owner availability feed', status: demand.intent === 'workspace' ? 'awaiting-access' : 'loaded', detail: demand.intent === 'workspace' ? 'Connect next: owner-approved windows activate booking' : 'Movement request keeps room availability outside this decision' },
+    ],
   }
 }
 

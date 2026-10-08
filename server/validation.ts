@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { DecisionRequest } from '../src/api-contracts.js'
+import { CREMORNE_OPERATING_POLICY } from './operating-policy.js'
 
 const boundedText = (max: number) => z.string().trim().min(1).max(max)
 const id = z.string().trim().min(1).max(180).regex(/^[a-zA-Z0-9._:-]+$/)
@@ -103,7 +104,7 @@ const outcomeSchema = z.object({
   journeyTrace: z.array(z.tuple([
     z.number().finite().min(-90).max(90),
     z.number().finite().min(-180).max(180),
-  ])).min(3).max(500).optional(),
+  ])).min(CREMORNE_OPERATING_POLICY.evidence.minimumCandidateTracePoints).max(CREMORNE_OPERATING_POLICY.evidence.maximumCandidateTracePoints).optional(),
   shareTrace: z.boolean().optional(),
   candidateRouteName: boundedText(120).optional(),
   workspaceIssues: z.array(workspaceIssueSchema).max(10).optional(),

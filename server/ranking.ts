@@ -1,4 +1,4 @@
-import type { DecisionContext, RankedCapacityOption, StructuredDemand } from '../src/api-contracts.js'
+import type { DecisionContext, DecisionEligibilityCheck, DecisionScoreComponent, RankedCapacityOption, StructuredDemand } from '../src/api-contracts.js'
 import type { GraphCapacityUnit, GraphNeighbourhood } from './graph-types.js'
 
 export function rankCapacity(
@@ -38,11 +38,17 @@ function rankMovement(
   const shadePercent = capacity.shadePercent ?? 0
   const exposureIndex = Math.round(context.uvIndex * durationMinutes * (1 - shadePercent / 100))
   const reasons: string[] = []
+  const eligibilityChecks: DecisionEligibilityCheck[] = []
   let eligible = true
 
   if ((demand.requirements.stepFree || demand.requirements.accessible) && !capacity.stepFree) {
     eligible = false
     reasons.push('This route does not meet the requested step-free access need.')
+    eligibilityChecks.push({ id: 'access', label: 'Step-free access', status: 'fail', detail: 'Step-free access is not verified for this route.' })
+  } else if (demand.requirements.stepFree || demand.requirements.accessible) {
+    eligibilityChecks.push({ id: 'access', label: 'Step-free access', status: 'pass', detail: 'The route meets the requested access requirement.' })
+  } else {
+    eligibilityChecks.push({ id: 'access', label: 'Step-free access', status: 'not-requested', detail: 'Standard pedestrian access applies.' })
   }
 
   const applicableRule = memories.find((memory) =>
@@ -53,11 +59,23 @@ function rankMovement(
   if (applicableRule && demand.requirementStrength === 'required') {
     eligible = false
     reasons.push('A comparable high-UV journey produced higher exposure on this route.')
+    eligibilityChecks.push({ id: 'memory', label: 'Local Memory boundary', status: 'fail', detail: applicableRule.summary })
+  } else {
+    eligibilityChecks.push({
+      id: 'memory', label: 'Local Memory boundary',
+      status: memories.length ? 'pass' : 'unknown',
+      detail: memories.length ? 'Relevant local outcomes were applied.' : 'Ready for the first reviewed local boundary.',
+    })
   }
 
   if (capacityKnown && remainingCapacity < 0) {
     eligible = false
     reasons.push(`Predicted demand exceeds the route’s modelled capacity by ${Math.abs(remainingCapacity)}.`)
+    eligibilityChecks.push({ id: 'capacity', label: 'Capacity at arrival', status: 'fail', detail: `${Math.abs(remainingCapacity)} over the modelled safe capacity.` })
+  } else if (capacityKnown) {
+    eligibilityChecks.push({ id: 'capacity', label: 'Capacity at arrival', status: 'pass', detail: `${remainingCapacity} places remain after expected demand.` })
+  } else {
+    eligibilityChecks.push({ id: 'capacity', label: 'Capacity at arrival', status: 'unknown', detail: 'Pilot sensor calibration will establish the route threshold.' })
   }
 
   if (capacityKnown && eligible) reasons.push(`${remainingCapacity} places remain at the expected arrival time.`)
@@ -72,6 +90,13 @@ function rankMovement(
   const remainingPenalty = capacityKnown ? (remainingCapacity < 12 ? 70 : remainingCapacity < 24 ? 18 : 0) : 0
   const memoryScore = memories.reduce((total, memory) => total + memory.effect * memory.confidence, 0)
   const shadeCredit = prioritisesLowerUv ? shadePercent * 0.9 : 0
+  const scoreBreakdown: DecisionScoreComponent[] = [
+    { id: 'time', label: 'Journey time', value: Number((durationMinutes * timeWeight).toFixed(2)), direction: 'penalty', detail: `${durationMinutes} min × ${timeWeight} time weight` },
+    { id: 'demand', label: 'Expected demand', value: Number((predictedDemand * crowdingWeight).toFixed(2)), direction: 'penalty', detail: capacityKnown ? `${predictedDemand} expected users in this time band` : 'Demand is visible; sensor calibration activates the capacity weight' },
+    { id: 'capacity', label: 'Capacity buffer', value: remainingPenalty, direction: 'penalty', detail: capacityKnown ? `${remainingCapacity} places remain` : 'Capacity weight activates after field calibration' },
+    { id: 'memory', label: 'Local outcomes', value: Number(memoryScore.toFixed(2)), direction: memoryScore < 0 ? 'credit' : 'penalty', detail: memories.length ? `${memories.length} relevant memory record${memories.length === 1 ? '' : 's'}` : 'Ready for observed local outcomes' },
+    { id: 'canopy', label: 'Canopy adjacency', value: Number(shadeCredit.toFixed(2)), direction: 'credit', detail: `${shadePercent}% of the route is next to mapped canopy` },
+  ]
   const score = durationMinutes * timeWeight
     + predictedDemand * crowdingWeight
     + exposureIndex * exposureWeight
@@ -100,6 +125,8 @@ function rankMovement(
     stepFree: capacity.stepFree,
     facilities: capacity.facilities,
     memory: memories,
+    eligibilityChecks,
+    scoreBreakdown,
   }
 }
 
@@ -111,18 +138,28 @@ function rankWorkspace(
   const memories = neighbourhood.memories.filter((memory) => memory.capacityUnitId === capacity.id && memory.applies)
   const reasons: string[] = []
   const blockers: string[] = []
+  const eligibilityChecks: DecisionEligibilityCheck[] = []
   const requestedStart = demand.startTime || '14:00'
   const requestedEnd = addMinutes(requestedStart, demand.durationMinutes)
   const matchingWindow = capacity.availability.find((window) => intervalFits(requestedStart, requestedEnd, window))
 
   if (capacity.safeCapacity < demand.capacityRequired) blockers.push(`Capacity is ${capacity.safeCapacity}.`)
+  eligibilityChecks.push({ id: 'capacity', label: 'Capacity', status: capacity.safeCapacity >= demand.capacityRequired ? 'pass' : 'fail', detail: `${capacity.safeCapacity} seats for ${demand.capacityRequired} people.` })
   if (demand.requirements.accessible && !capacity.stepFree) blockers.push('Accessibility is not verified.')
-  if (demand.requirements.hybridEquipment && !hasAny(capacity.facilities, ['Video call', 'Video conference', 'Hybrid presentation', 'AV'])) blockers.push('Hybrid meeting equipment is not listed.')
+  eligibilityChecks.push({ id: 'accessibility', label: 'Accessibility', status: demand.requirements.accessible ? capacity.stepFree ? 'pass' : 'fail' : 'not-requested', detail: demand.requirements.accessible ? capacity.stepFree ? 'Step-free access is verified.' : 'Access verification required.' : 'Standard room access applies.' })
+  const hybridAvailable = hasAny(capacity.facilities, ['Video call', 'Video conference', 'Hybrid presentation', 'AV'])
+  if (demand.requirements.hybridEquipment && !hybridAvailable) blockers.push('Hybrid meeting equipment is not listed.')
+  eligibilityChecks.push({ id: 'hybrid', label: 'Hybrid equipment', status: demand.requirements.hybridEquipment ? hybridAvailable ? 'pass' : 'fail' : 'not-requested', detail: demand.requirements.hybridEquipment ? hybridAvailable ? 'Hybrid capability is listed.' : 'Hybrid capability verification required.' : 'Standard meeting setup applies.' })
   demand.requirements.equipment.forEach((equipment) => {
-    if (!facilityMatches(capacity.facilities, equipment)) blockers.push(`${equipment} is not confirmed in venue data.`)
+    const matches = facilityMatches(capacity.facilities, equipment)
+    if (!matches) blockers.push(`${equipment} is not confirmed in venue data.`)
+    eligibilityChecks.push({ id: `equipment-${equipment.toLowerCase().replace(/\s+/g, '-')}`, label: equipment, status: matches ? 'pass' : 'fail', detail: matches ? `${equipment} is confirmed in venue data.` : `${equipment} is not confirmed in venue data.` })
   })
   if (!matchingWindow) blockers.push(`The room is not available from ${requestedStart} to ${requestedEnd}.`)
-  if (capacity.accessClass === 'internal' && capacity.ownerOrganisation !== demand.requesterOrganisation) blockers.push('This room is internal to another organisation.')
+  eligibilityChecks.push({ id: 'time', label: 'Time window', status: matchingWindow ? 'pass' : 'fail', detail: matchingWindow ? `Available ${requestedStart}–${requestedEnd}.` : `No owner-open window covers ${requestedStart}–${requestedEnd}.` })
+  const accessAllowed = capacity.accessClass !== 'internal' || capacity.ownerOrganisation === demand.requesterOrganisation
+  if (!accessAllowed) blockers.push('This room is internal to another organisation.')
+  eligibilityChecks.push({ id: 'tenancy', label: 'Tenancy access', status: accessAllowed ? 'pass' : 'fail', detail: accessAllowed ? `${capacity.accessClass === 'internal' ? 'Requester belongs to the owning organisation.' : 'Shared access is permitted in the owner-open window.'}` : 'The requester is outside the owning organisation.' })
 
   const remainingCapacity = capacity.safeCapacity - demand.capacityRequired
   if (blockers.length === 0) {
@@ -136,6 +173,11 @@ function rankWorkspace(
 
   const memoryScore = memories.reduce((total, memory) => total + memory.effect * memory.confidence, 0)
   const sparePenalty = Math.abs(remainingCapacity - 3) * 0.8
+  const scoreBreakdown: DecisionScoreComponent[] = [
+    { id: 'requirements', label: 'Required conditions', value: blockers.length * 1_000, direction: 'penalty', detail: blockers.length ? `${blockers.length} required condition${blockers.length === 1 ? '' : 's'} not met` : 'All required conditions pass' },
+    { id: 'fit', label: 'Capacity fit', value: Number(sparePenalty.toFixed(2)), direction: 'penalty', detail: `${remainingCapacity} seats remain after booking` },
+    { id: 'memory', label: 'Previous outcomes', value: Number(memoryScore.toFixed(2)), direction: memoryScore < 0 ? 'credit' : 'penalty', detail: memories.length ? `${memories.length} relevant memory record${memories.length === 1 ? '' : 's'}` : 'Ready for observed local outcomes' },
+  ]
   const score = blockers.length * 1_000 + sparePenalty + memoryScore
 
   return {
@@ -157,6 +199,8 @@ function rankWorkspace(
     availableFrom: requestedStart,
     availableUntil: requestedEnd,
     memory: memories,
+    eligibilityChecks,
+    scoreBreakdown,
   }
 }
 

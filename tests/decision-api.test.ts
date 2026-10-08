@@ -25,7 +25,21 @@ describe('decision API contract', () => {
     }))
     const body = await response.json()
     expect(response.status).toBe(200)
-    expect(body).toMatchObject({ action: 'recommend', resolvedDestination: { id: 'east-richmond' }, recommendation: { name: 'Shadow Route C' } })
+    expect(body).toMatchObject({
+      action: 'recommend',
+      resolvedDestination: { id: 'east-richmond' },
+      recommendation: {
+        name: 'Shadow Route C',
+        eligibilityChecks: expect.any(Array),
+        scoreBreakdown: expect.any(Array),
+      },
+      trace: {
+        consideredOptions: 3,
+        eligibleOptions: 3,
+        stages: expect.any(Array),
+        sources: expect.any(Array),
+      },
+    })
   })
 
   it('returns Route B for the generic first pass', async () => {

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { handleDecisionRequest } from './api/decision.js'
 import { handleHealthRequest } from './api/health.js'
 import { handleContextRequest } from './api/context.js'
+import { handleOperationsRequest } from './api/operations.js'
 
 function localApi(): Plugin {
   return {
@@ -36,6 +37,7 @@ function localApi(): Plugin {
       mount('/api/decision', handleDecisionRequest)
       mount('/api/health', handleHealthRequest)
       mount('/api/context', handleContextRequest)
+      mount('/api/operations', handleOperationsRequest)
     },
   }
 }
@@ -45,5 +47,17 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), localApi()],
     server: { port: 4173 },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(moduleId) {
+            if (moduleId.includes('node_modules/@deck.gl') || moduleId.includes('node_modules/@luma.gl') || moduleId.includes('node_modules/@math.gl')) return 'twin-webgl'
+            if (moduleId.includes('node_modules/leaflet') || moduleId.includes('node_modules/react-leaflet')) return 'map'
+            if (moduleId.includes('node_modules/lucide-react')) return 'icons'
+            if (moduleId.includes('node_modules/react/') || moduleId.includes('node_modules/react-dom/')) return 'react'
+          },
+        },
+      },
+    },
   }
 })
