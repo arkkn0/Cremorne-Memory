@@ -1002,3 +1002,109 @@
   .product-clear .route-canvas,
   .product-clear .space-canvas { min-height: 58vh; }
 }
+
+/* Final CDH meeting pass: readable decision evidence, no prototype microcopy. */
+.product-clear .operator-trace-workbench {
+  align-items: stretch;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  max-width: 1320px;
+  overflow: visible;
+  padding: 20px 30px 32px;
+}
+
+.product-clear .decision-graph-panel,
+.product-clear .execution-trace {
+  border: 1px solid var(--cm-line);
+  border-radius: 18px;
+  min-width: 0;
+}
+
+.product-clear .decision-network {
+  min-height: 220px;
+}
+
+.product-clear .network-node small,
+.product-clear .network-link span {
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.product-clear .network-node strong { font-size: 15px; }
+.product-clear .network-node span { font-size: 12px; }
+
+.product-clear .option-inspector {
+  gap: 16px;
+  padding: 18px;
+}
+
+.product-clear .option-inspector > div:first-child span,
+.product-clear .option-inspector > div:first-child strong {
+  color: var(--cm-ink);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.product-clear .decision-detail-section { display: grid; gap: 9px; }
+.product-clear .decision-detail-section h3 { font-size: 14px; margin: 0; }
+
+.product-clear .check-row,
+.product-clear .score-row {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.product-clear .check-row > span,
+.product-clear .score-row > span {
+  border-radius: 11px;
+  font-size: 13px;
+  min-height: 72px;
+  padding: 11px;
+}
+
+.product-clear .check-row small,
+.product-clear .score-row em {
+  color: var(--cm-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.product-clear .trace-stage strong { font-size: 14px; }
+.product-clear .trace-stage small { color: var(--cm-muted); font-size: 12px; }
+.product-clear .trace-stage > i { font-size: 11px; }
+
+.product-clear .asset-control {
+  gap: 16px;
+  max-width: 1220px;
+  padding: 20px 30px 32px;
+}
+
+.product-clear .asset-control__header { min-height: 104px; }
+.product-clear .asset-control__summary small { font-size: 11px; }
+.product-clear .asset-panel__title strong,
+.product-clear .integration-register__title strong { font-size: 14px; }
+.product-clear .asset-panel__title small,
+.product-clear .integration-register__title small,
+.product-clear .integration-register__title em { font-size: 11px; }
+.product-clear .sensor-register strong,
+.product-clear .venue-register strong { font-size: 12px; }
+.product-clear .sensor-register small,
+.product-clear .venue-register small { font-size: 11px; }
+.product-clear .sensor-register b,
+.product-clear .venue-register b { font-size: 9px; }
+.product-clear .integration-row { font-size: 12px; min-height: 56px; }
+.product-clear .integration-row.is-head { font-size: 10px; }
+.product-clear .integration-row b { font-size: 10px; }
+.product-clear .operating-rollout > div strong,
+.product-clear .operating-rollout li strong { font-size: 12px; }
+.product-clear .operating-rollout > div small,
+.product-clear .operating-rollout li small { font-size: 11px; }
+
+@media (max-width: 1100px) {
+  .product-clear .operator-trace-workbench { grid-template-columns: 1fr; }
+  .product-clear .check-row,
+  .product-clear .score-row { grid-template-columns: 1fr 1fr; }
+}

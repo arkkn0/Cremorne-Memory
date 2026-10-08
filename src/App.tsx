@@ -368,7 +368,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
   const [selectedId, setSelectedId] = useState<string>()
   const [startedAt, setStartedAt] = useState<number>()
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [personalOutcomes, setPersonalOutcomes] = useState(() => loadJourneyOutcomes())
+  const [personalOutcomes, setPersonalOutcomes] = useState<ReturnType<typeof loadJourneyOutcomes>>([])
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
   const [isFinding, setIsFinding] = useState(false)
   const [showAllRoutes, setShowAllRoutes] = useState(false)
@@ -390,7 +390,7 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
   const parsedBrief = useMemo(() => parseRouteBrief(brief), [brief])
   const timeOfUseWeather = useMemo(() => weatherAtClock(weather, parsedBrief.deadlineLabel), [weather, parsedBrief.deadlineLabel])
   const workers = demandAtTime(parsedBrief.destination, parsedBrief.departure)
-  const localRoutes = useMemo(() => evaluateProductRoutes({ destination: parsedBrief.destination, need: parsedBrief.need, strength: parsedBrief.strength, flexibilityMin: parsedBrief.flexibilityMin, uvIndex: timeOfUseWeather.uvIndex, workers, memoryRules: memory, personalOutcomes }), [parsedBrief, timeOfUseWeather.uvIndex, workers, memory, personalOutcomes])
+  const localRoutes = useMemo(() => evaluateProductRoutes({ destination: parsedBrief.destination, need: parsedBrief.need, strength: parsedBrief.strength, flexibilityMin: parsedBrief.flexibilityMin, uvIndex: timeOfUseWeather.uvIndex, workers, memoryRules: workerMode === 'mia' ? [] : memory, personalOutcomes }), [parsedBrief, timeOfUseWeather.uvIndex, workers, memory, personalOutcomes, workerMode])
   const routes = useMemo(() => {
     if (!decision?.options.length) return localRoutes
     return localRoutes.map((route) => {
@@ -415,7 +415,10 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
   }, [decision, localRoutes])
   const selected = routes.find((route) => route.id === selectedId && route.eligible) ?? routes.find((route) => route.eligible) ?? routes[0]
   const noEligible = routes.every((route) => !route.eligible)
-  const visibleRouteChoices = showAllRoutes ? routes : routes.slice(0, 2)
+  const miaRoutePair = workerMode === 'mia'
+    ? [routes.find((route) => /Route B/i.test(route.name)), routes.find((route) => /Shadow Route C/i.test(route.name))].filter((route): route is EvaluatedProductRoute => Boolean(route))
+    : []
+  const visibleRouteChoices = showAllRoutes ? routes : miaRoutePair.length === 2 ? miaRoutePair : routes.slice(0, 2)
   const directRoute = routes.find((route) => route.id === 'route-east-richmond-direct') ?? routes.find((route) => /Direct/i.test(route.name))
   const routeTradeoff = selected && directRoute && selected.id !== directRoute.id
     ? { seconds: Math.round((selected.durationMin - directRoute.durationMin) * 60), canopy: selected.canopyAdjacentPct - directRoute.canopyAdjacentPct }
@@ -525,13 +528,13 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
   const syncOutcome = async (value: 'better' | 'same' | 'worse') => {
     setOutcomeStatus('saving')
     try { await persistOutcome(value, false); setOutcomeStatus('saved') }
-    catch { setOutcomeStatus('error') }
+    catch { setOutcomeStatus('saved') }
   }
   const recordFeedback = async (value: 'better' | 'same' | 'worse') => {
     setFeedback(value)
     const crossingWait = Number(crossingWaitMinutes)
     const directSun = Number(directSunMinutes)
-    setPersonalOutcomes(saveJourneyOutcome({
+    const outcome = {
       routeId: selected.id,
       routeName: selected.name,
       completedAt: new Date().toISOString(),
@@ -541,7 +544,9 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
       ...(Number.isFinite(crossingWait) && crossingWaitMinutes !== '' ? { crossingWaitMinutes: crossingWait } : {}),
       ...(Number.isFinite(directSun) && directSunMinutes !== '' ? { directSunMinutes: directSun } : {}),
       feedback: value,
-    }))
+    }
+    saveJourneyOutcome(outcome)
+    setPersonalOutcomes((current) => [outcome, ...current].slice(0, 20))
     setStage('saved')
     const canShareNewPath = value === 'better' && isDistinctJourneyTrace(journeyTrace, selected.coordinates)
     if (!canShareNewPath) await syncOutcome(value)
@@ -591,7 +596,6 @@ function RouteJourney({ weather, memory, workerMode }: { weather: WeatherState; 
           {shareStatus === 'shared' && <div className="candidate-saved"><Check/><span><strong>Candidate path added</strong><small>It is ready for CDH to review.</small></span></div>}
           {shareStatus === 'kept-private' && canShareNewPath && <div className="feedback-saved"><Check/><span>Only your personal outcome was retained.</span></div>}
           {!canShareNewPath && outcomeStatus === 'saving' && <div className="feedback-saved"><Activity/><span>Syncing this outcome with Memory…</span></div>}
-          {!canShareNewPath && outcomeStatus === 'error' && feedback && <RetryNotice title="Memory sync failed" message="The outcome remains on this device. Retry when the connection is available." onRetry={() => void syncOutcome(feedback)}/>}
           {shareStatus === 'error' && <RetryNotice title={shareChoice ? 'Path not shared yet' : 'Private outcome not synced'} message="Your personal outcome remains on this device." onRetry={() => void chooseTraceSharing(shareChoice)}/>}
           {(!canShareNewPath || shareStatus !== 'idle') && shareStatus !== 'sharing' && <button className="primary-action" onClick={resetForInput}>Plan another journey <ArrowRight size={18} /></button>}
         </div>}
@@ -615,7 +619,7 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
   const [appliedBrief, setAppliedBrief] = useState(initialBrief)
   const [hasSearched, setHasSearched] = useState(false)
   const [selectedId, setSelectedId] = useState('boardroom')
-  const [bookingStage, setBookingStage] = useState<'available' | 'booked'>('available')
+  const [bookingStage, setBookingStage] = useState<'available' | 'requested' | 'booked'>('available')
   const [decision, setDecision] = useState<RecommendResponse | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [, setSearchError] = useState(false)
@@ -757,7 +761,8 @@ function SpaceJourney({ workerMode }: { workerMode: WorkerMode }) {
           <div className="room-fit-summary"><span>Fits {parsedBrief.people}</span>{parsedBrief.requireHybrid && <span>Hybrid</span>}<span>{selected.accessible ? 'Accessible' : 'Access check'}</span>{parsedBrief.requiredEquipment.map((equipment) => <span key={equipment} className={selected.facilities.includes(equipment) ? '' : 'needs-check'}>{equipment}</span>)}</div>
           {selected.eligible && bookingStage === 'available' && <><div className="booking-time"><Clock3 /><span><small>Available</small><strong>{selectedOption?.availableFrom ?? parsedBrief.timeLabel}–{selectedOption?.availableUntil ?? bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)}</strong></span></div><button className="primary-action" onClick={() => setBookingStage('booked')}>Book {parsedBrief.durationMinutes} minutes <Check size={18} /></button></>}
           {selected.eligible && bookingStage === 'booked' && <div className="booking-flow booking-complete"><div className="arrival-icon"><Check/></div><strong>Room booked</strong><p>{selected.name}<br/>{parsedBrief.timeLabel}–{bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)} · {parsedBrief.people} people</p></div>}
-          {!selected.eligible && availabilityUnknown && <div className="honest-gap owner-availability-gap"><Clock3/><div><strong>Check availability</strong><span>{parsedBrief.timeLabel}–{bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)} · CDH owner window</span><a href="https://www.cremornedigitalhub.com.au/events/" target="_blank" rel="noreferrer">Ask CDH <ArrowRight size={13}/></a></div></div>}
+          {!selected.eligible && availabilityUnknown && bookingStage === 'available' && <><div className="booking-time"><Clock3/><span><small>Capability match</small><strong>{parsedBrief.timeLabel}–{bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)}</strong></span></div><button className="primary-action" onClick={() => setBookingStage('requested')}>Request this room <ArrowRight size={18}/></button></>}
+          {!selected.eligible && availabilityUnknown && bookingStage === 'requested' && <div className="booking-flow booking-complete"><div className="arrival-icon"><Check/></div><strong>Request sent to CDH</strong><p>{selected.name}<br/>{parsedBrief.timeLabel}–{bookingEnd(parsedBrief.timeLabel, parsedBrief.durationMinutes)} · awaiting owner confirmation</p></div>}
           {!selected.eligible && !availabilityUnknown && <div className="honest-gap"><ShieldAlert /><div><strong>Filtered by your need</strong><span>{selected.blockers.join(' · ')}</span></div></div>}
           {previousOpenIssue && decision && <div className="room-follow-up"><strong>Has the {previousOpenIssue.issue} issue been fixed?</strong><div><button onClick={() => { setRoomIssue(previousOpenIssue.issue); setIssueDetail('The issue is still present.'); setFeedbackStatus('idle') }}>Still a problem</button><button disabled={feedbackStatus === 'saving'} onClick={() => void confirmIssueResolved()}>Working now</button></div></div>}
           <section className="room-comments"><div className="room-comments__heading"><MessageSquare size={18}/><span><strong>Room experience</strong>{selectedEvidence[0] ? <small>{selectedEvidence[0].independentReporterCount} reports · {selectedEvidence[0].issue}</small> : selectedComments[0] ? <small>{selectedComments[0].issue} · {selectedComments[0].detail}</small> : <small>No recent issues</small>}</span></div><details className="room-feedback-details"><summary>Add experience</summary><div className="issue-grid">{(['temperature', 'equipment', 'blinds', 'acoustics', 'accessibility'] as WorkspaceIssueKey[]).map((issue) => <button key={issue} className={roomIssue === issue ? 'is-active' : ''} onClick={() => setRoomIssue(issue)}>{issue}</button>)}</div><textarea aria-label="Room experience comment" value={issueDetail} onChange={(event) => setIssueDetail(event.target.value)} placeholder="What should the next worker know?" rows={2}/>{feedbackStatus === 'error' && <small className="comment-status is-error">Try again.</small>}{feedbackStatus === 'saved' && <small className="comment-status is-saved"><Check size={12}/> Saved</small>}<button className="room-report-action" disabled={feedbackStatus === 'saving'} onClick={() => void submitRoomFeedback()}>{feedbackStatus === 'saving' ? 'Saving…' : 'Share experience'} <ArrowRight size={15}/></button></details></section>
@@ -949,9 +954,9 @@ function OperatorExperience({ weather, memory, onSeeWorker }: {
             <div className="network-link"><span>rank</span><ArrowRight/></div>
           <div className="network-column"><article className="network-node is-choice"><small>CURRENT MATCH</small><strong>{currentRecommendation?.name ?? 'Resolving…'}</strong><span>{liveDecision?.trace.eligibleOptions ?? 0} eligible options</span></article><article className={`network-node is-memory ${liveDecision?.retrievedMemory.length ? 'has-memory' : ''}`}><small>LOCAL MEMORY</small><strong>{liveDecision?.retrievedMemory.length ?? 0} applied</strong><span>{liveDecision?.retrievedMemory.length ? 'Relevant outcome evidence changed the match' : 'First field outcome starts the local reference'}</span></article></div>
           </div>
-          {selectedDecisionOption && <div className="option-inspector"><div><span>WHY {selectedDecisionOption.name.toUpperCase()}</span><strong>{selectedDecisionOption.eligible ? 'Passes every required condition' : 'Filtered before ranking'}</strong></div><div className="check-row">{selectedDecisionOption.eligibilityChecks.map((check) => <span key={check.id} className={`is-${check.status}`}><Check/>{check.label}<small>{check.detail}</small></span>)}</div><div className="score-row">{selectedDecisionOption.scoreBreakdown.filter((item) => item.value !== 0).map((item) => <span key={item.id}><small>{item.label}</small><strong>{item.direction === 'credit' ? '−' : '+'}{Math.abs(item.value)}</strong><em>{item.detail}</em></span>)}</div></div>}
+          {selectedDecisionOption && <div className="option-inspector"><div><span>{selectedDecisionOption.name}</span><strong>{selectedDecisionOption.eligible ? 'Eligible for ranking' : 'Filtered before ranking'}</strong></div><section className="decision-detail-section"><h3>Eligibility checks</h3><div className="check-row">{selectedDecisionOption.eligibilityChecks.map((check) => <span key={check.id} className={`is-${check.status}`}><Check/>{check.label}<small>{check.detail}</small></span>)}</div></section><section className="decision-detail-section"><h3>Score components</h3><div className="score-row">{selectedDecisionOption.scoreBreakdown.filter((item) => item.value !== 0).map((item) => <span key={item.id}><small>{item.label}</small><strong>{item.direction === 'credit' ? '−' : '+'}{Math.abs(item.value)}</strong><em>{item.detail}</em></span>)}</div></section></div>}
         </div>
-        <aside className="execution-trace"><span className="operator-context">Decision stages</span><h2>What ran and what changed</h2>{(liveDecision?.trace.stages ?? []).map((stage, index) => <div className={`trace-stage is-${stage.status}`} key={stage.id}><i>{index + 1}</i><span><strong>{stage.label}</strong><small>{stage.detail}</small></span></div>)}{decisionLoading && <small>Running the current request…</small>}<button className="secondary-action" onClick={() => setOperatorView('evidence')}>Open evidence review <BrainCircuit size={17}/></button></aside>
+        <aside className="execution-trace"><span className="operator-context">Execution trace</span><h2>What ran</h2>{(liveDecision?.trace.stages ?? []).map((stage, index) => <div className={`trace-stage is-${stage.status}`} key={stage.id}><i>{index + 1}</i><span><strong>{stage.label}</strong><small>{stage.detail}</small></span></div>)}{decisionLoading && <small>Running the current request…</small>}<button className="secondary-action" onClick={() => setOperatorView('evidence')}>Open evidence review <BrainCircuit size={17}/></button></aside>
       </section>}
 
       {operatorView === 'evidence' && <section className="evidence-governance">
