@@ -975,19 +975,8 @@ function OperatorExperience({ weather, memory, onSeeWorker }: {
           <div className="asset-control__summary"><span><strong>{operations.assets.sensors.length}</strong><small>Yarra sensor sites</small></span><span><strong>{operations.assets.venues.length}</strong><small>CDH space types</small></span><span><strong>{systemStatus?.services.filter((service) => service.status === 'ready').length ?? '—'}</strong><small>running services</small></span></div>
         </header>
 
-        <div className="asset-register">
-          <section className="asset-panel">
-            <div className="asset-panel__title"><Radio/><span><strong>Yarra sensing network</strong><small>Published Cremorne smart-pole locations</small></span><a href={operations.assets.sensors[0].source} target="_blank" rel="noreferrer">Source</a></div>
-            <div className="sensor-register">{operations.assets.sensors.map((asset) => <article key={asset.id}><i/><span><strong>{asset.address}</strong><small>{asset.capability}</small></span><b>DATA ACCESS</b></article>)}</div>
-          </section>
-          <section className="asset-panel">
-            <div className="asset-panel__title"><Building2/><span><strong>CDH venue capacity</strong><small>Published capability at 80 Balmain Street</small></span><a href={operations.assets.venues[0].source} target="_blank" rel="noreferrer">Source</a></div>
-            <div className="venue-register">{operations.assets.venues.map((asset) => <article key={asset.id}><span><strong>{asset.name}</strong><small>{asset.capability}</small></span><b>CAPABILITY LOADED</b></article>)}</div>
-          </section>
-        </div>
-
         <section className="integration-register">
-          <div className="integration-register__title"><ServerCog/><span><strong>Integration register</strong><small>Every connection has an owner, interface and activation step</small></span><em>{`Registry refreshed ${new Date(operations.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</em></div>
+          <div className="integration-register__title"><ServerCog/><span><strong>Integration register</strong><small>Owner · interface · cadence · next action</small></span></div>
           <div className="integration-table"><div className="integration-row is-head"><span>CONNECTION</span><span>DATA OWNER</span><span>INTERFACE CONTRACT</span><span>CADENCE</span><span>ACTION</span></div>{operations.integrations.map((item) => <article className="integration-row" key={item.id}><span><i className={`is-${item.state}`}/><strong>{item.name}</strong></span><span>{item.owner}</span><span>{item.interface}</span><span>{item.cadence}</span><b className={`is-${item.state}`}>{item.action}</b></article>)}</div>
         </section>
 
